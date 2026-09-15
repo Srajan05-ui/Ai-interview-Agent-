@@ -95,3 +95,21 @@ body {
   70% { box-shadow: 0 0 0 30px rgba(99, 102, 241, 0); }
   100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
 }
+
+@keyframes cinematic-fade-scale {
+  0% { opacity: 0; transform: scale(0.9); filter: blur(10px); }
+  20% { opacity: 1; transform: scale(1); filter: blur(0px); }
+  100% { opacity: 1; transform: scale(1.08); filter: blur(0px); }
+}
+
+@keyframes cinematic-text-reveal {
+  0% { opacity: 0; letter-spacing: 0em; filter: blur(20px); }
+  30% { opacity: 1; letter-spacing: 0.25em; filter: blur(0px); }
+  100% { opacity: 1; letter-spacing: 0.3em; filter: blur(0px); }
+}
+
+@keyframes cinematic-light-sweep {
+  0% { left: -100%; opacity: 0; }
+  50% { opacity: 0.5; }
+  100% { left: 200%; opacity: 0; }
+}
