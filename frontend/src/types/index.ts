@@ -1,6 +1,6 @@
 export type RoleLevel = 'Junior' | 'Mid-Level' | 'Senior' | 'Lead' | 'Staff';
 
-export type InterviewMode = 'Technical Q&A' | 'Live Coding' | 'Behavioral';
+export type InterviewMode = 'Technical Q&A' | 'Live Coding' | 'Behavioral' | 'Conceptual / System Design';
 
 export type CompanyStyle = 'Google-style' | 'Startup-style' | 'Amazon-style' | 'Meta-style' | 'General';
 
@@ -28,6 +28,7 @@ export interface ResumeFeedback {
     suggested: string;
     impactReason: string;
   }[];
+  detectedSkills?: string[];
 }
 
 export interface Resume {
@@ -47,6 +48,7 @@ export interface InterviewConfig {
   role: string;
   experienceLevel: RoleLevel;
   attachedRepoUrl?: string;
+  detectedSkills?: string[];
 }
 
 export interface InterviewTurn {
@@ -75,6 +77,7 @@ export interface Interview {
   status: InterviewStatus;
   createdAt: string;
   completedAt?: string;
+  questionBank?: string[];
 }
 
 export interface CitedFeedback {
