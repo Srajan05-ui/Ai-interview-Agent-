@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useSession, signIn as nextAuthSignIn, signOut as nextAuthSignOut } from 'next-auth/react';
 import { User, RoleLevel } from '@/types';
 
 interface AuthContextType {
@@ -10,30 +11,50 @@ interface AuthContextType {
   signup: (name: string, email: string, targetRole: string, experienceLevel: RoleLevel, password?: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   loginWithGithub: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: session, status } = useSession();
+  const [localUser, setLocalUser] = useState<User | null>(null);
+  const [loadingLocal, setLoadingLocal] = useState(true);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem('interview_agent_user');
       if (stored) {
-        setUser(JSON.parse(stored));
+        setLocalUser(JSON.parse(stored));
       }
     } catch (e) {
       console.error('Failed to load user from localStorage:', e);
     } finally {
-      setLoading(false);
+      setLoadingLocal(false);
     }
   }, []);
 
-  const saveUser = (newUser: User | null) => {
-    setUser(newUser);
+  // Compute active user: NextAuth OAuth session takes precedence if active, otherwise local candidate account
+  const activeUser: User | null = React.useMemo(() => {
+    if (status === 'authenticated' && session?.user) {
+      const isGitHub = (session as any)?.provider === 'github';
+      return {
+        id: (session.user as any)?.id || session.user.email || 'oauth-user',
+        name: session.user.name || 'Candidate',
+        email: session.user.email || '',
+        avatarUrl: session.user.image || undefined,
+        targetRole: localUser?.targetRole || 'Full Stack Engineer',
+        experienceLevel: localUser?.experienceLevel || 'Senior',
+        githubConnected: isGitHub || Boolean((session as any)?.accessToken),
+        githubAccessTokenRef: (session as any)?.accessToken,
+        createdAt: localUser?.createdAt || new Date().toISOString(),
+      };
+    }
+    return localUser;
+  }, [session, status, localUser]);
+
+  const saveLocalUser = (newUser: User | null) => {
+    setLocalUser(newUser);
     if (newUser) {
       localStorage.setItem('interview_agent_user', JSON.stringify(newUser));
     } else {
@@ -42,19 +63,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = async (email: string) => {
-    // Generate or fetch user
     const nameFromEmail = email.split('@')[0];
     const capitalizedName = nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
-    const existing: User = {
+    const candidate: User = {
       id: `user-${Date.now()}`,
       name: capitalizedName,
       email,
       targetRole: 'Full Stack Engineer',
-      experienceLevel: 'Mid-Level',
+      experienceLevel: 'Senior',
       githubConnected: false,
       createdAt: new Date().toISOString(),
     };
-    saveUser(existing);
+    saveLocalUser(candidate);
   };
 
   const signup = async (
@@ -63,55 +83,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     targetRole: string,
     experienceLevel: RoleLevel
   ) => {
-    const newUser: User = {
+    const candidate: User = {
       id: `user-${Date.now()}`,
       name,
       email,
       targetRole: targetRole || 'Full Stack Engineer',
-      experienceLevel: experienceLevel || 'Mid-Level',
+      experienceLevel: experienceLevel || 'Senior',
       githubConnected: false,
       createdAt: new Date().toISOString(),
     };
-    saveUser(newUser);
+    saveLocalUser(candidate);
   };
 
   const loginWithGoogle = async () => {
-    const googleUser: User = {
-      id: `user-google-${Date.now()}`,
-      name: 'Google User',
-      email: 'user@gmail.com',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GoogleUser',
-      targetRole: 'Senior Software Engineer',
-      experienceLevel: 'Senior',
-      githubConnected: false,
-      createdAt: new Date().toISOString(),
-    };
-    saveUser(googleUser);
+    await nextAuthSignIn('google');
   };
 
   const loginWithGithub = async () => {
-    const ghUser: User = {
-      id: `user-gh-${Date.now()}`,
-      name: 'GitHub Engineer',
-      email: 'engineer@github.com',
-      avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=GitHubEngineer',
-      targetRole: 'Staff Backend Architect',
-      experienceLevel: 'Senior',
-      githubConnected: true,
-      createdAt: new Date().toISOString(),
-    };
-    saveUser(ghUser);
+    await nextAuthSignIn('github');
   };
 
-  const logout = () => {
-    saveUser(null);
+  const logout = async () => {
+    saveLocalUser(null);
+    if (status === 'authenticated') {
+      await nextAuthSignOut({ callbackUrl: '/' });
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        loading,
+        user: activeUser,
+        loading: status === 'loading' && loadingLocal,
         login,
         signup,
         loginWithGoogle,
