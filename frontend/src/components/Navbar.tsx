@@ -60,14 +60,17 @@ export default function Navbar() {
           </Link>
 
           {/* Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1" suppressHydrationWarning>
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              const isActive = mounted && pathname
+                ? pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
+                : false;
               return (
                 <Link
                   key={item.name}
                   href={item.href}
+                  suppressHydrationWarning
                   onClick={(e) => handleNavClick(e, item)}
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer ${
                     isActive
