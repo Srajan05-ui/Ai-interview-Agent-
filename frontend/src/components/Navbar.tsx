@@ -90,9 +90,9 @@ export default function Navbar() {
           {mounted && user ? (
             <div className="flex items-center gap-3">
               {user.githubConnected && (
-                <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] text-slate-300">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  GitHub Connected
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-400 font-medium whitespace-nowrap">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                  <span>GitHub Connected</span>
                 </div>
               )}
 

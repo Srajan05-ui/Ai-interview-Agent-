@@ -1,14 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { GitBranch, Globe, GitFork, Sparkles, ArrowRight, CheckCircle2, ShieldCheck, AlertTriangle, Code2, Map } from 'lucide-react';
+import { GitBranch, Globe, GitFork, Sparkles, ArrowRight, CheckCircle2, ShieldCheck, AlertTriangle, Code2, Map, Search, RefreshCw, Lock } from 'lucide-react';
 import { RepoAnalysis } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
+interface GitHubRepoItem {
+  id?: number;
+  name: string;
+  fullName: string;
+  lang: string;
+  stars: number;
+  updated: string;
+  url: string;
+  isPrivate?: boolean;
+  defaultBranch?: string;
+  description?: string;
+}
+
 export default function RepoAnalysisPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loginWithGithub } = useAuth();
 
   // Mode: "url" or "oauth"
   const [tab, setTab] = useState<'url' | 'oauth'>('url');
@@ -24,13 +37,42 @@ export default function RepoAnalysisPage() {
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [isSendingToRoadmap, setIsSendingToRoadmap] = useState(false);
 
-  // Connected sample repos for oauth tab
-  const repoPrefix = user?.name ? user.name.toLowerCase().replace(/\s+/g, '') : 'candidate';
-  const sampleRepos = [
-    { name: `${repoPrefix}/distributed-cache-engine`, lang: 'Go', stars: 124, updated: 'Yesterday', url: 'https://github.com/redis/redis' },
-    { name: `${repoPrefix}/portfolio-v2`, lang: 'TypeScript', stars: 15, updated: '3 days ago', url: 'https://github.com/vercel/next.js' },
-    { name: `${repoPrefix}/microservices-demo`, lang: 'TypeScript', stars: 38, updated: 'Last week', url: 'https://github.com/facebook/react' },
-  ];
+  // Real Connected Repositories State
+  const [realRepos, setRealRepos] = useState<GitHubRepoItem[]>([]);
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [repoSearch, setRepoSearch] = useState('');
+  const [githubUsernameInput, setGithubUsernameInput] = useState('');
+  const [reposError, setReposError] = useState<string | null>(null);
+
+  const fetchUserRepos = async (customUsername?: string) => {
+    setLoadingRepos(true);
+    setReposError(null);
+    try {
+      const usernameToFetch = customUsername || githubUsernameInput;
+      const query = usernameToFetch ? `?username=${encodeURIComponent(usernameToFetch)}` : '';
+      const res = await fetch(`/api/user/repos${query}`);
+      const data = await res.json();
+      if (res.ok && data.repos && data.repos.length > 0) {
+        setRealRepos(data.repos);
+      } else if (data.repos && data.repos.length === 0 && !data.connected) {
+        setReposError('No connected GitHub repositories found. Connect your GitHub account or enter your username.');
+      } else if (data.error) {
+        setReposError(data.error);
+      } else {
+        setRealRepos(data.repos || []);
+      }
+    } catch (e: any) {
+      setReposError(e?.message || 'Error communicating with GitHub.');
+    } finally {
+      setLoadingRepos(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'oauth' && user) {
+      fetchUserRepos();
+    }
+  }, [tab, user]);
 
   const handleStartAnalysis = async (targetUrl?: string) => {
     if (!user) {
@@ -157,7 +199,7 @@ export default function RepoAnalysisPage() {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <GitFork className="w-4 h-4" /> Connect GitHub
+              <GitFork className="w-4 h-4" /> {user?.githubConnected ? 'My GitHub Repositories' : 'Connect GitHub'}
             </button>
           </div>
 
@@ -213,41 +255,186 @@ export default function RepoAnalysisPage() {
           {/* OAuth Tab Content */}
           {tab === 'oauth' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Select from your connected GitHub repositories:</span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
+                <span>{user?.githubConnected ? 'Select from your GitHub repositories:' : 'Connect your account or explore by username:'}</span>
                 <span className="text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" /> public_repo minimal scope
+                  <ShieldCheck className="w-3.5 h-3.5" /> {user?.githubConnected ? 'GitHub Account Active' : 'public_repo minimal scope'}
                 </span>
               </div>
 
-              <div className="space-y-2.5">
-                {sampleRepos.map((repo) => (
-                  <div
-                    key={repo.name}
-                    onClick={() => {
-                      setRepoUrl(repo.url);
-                      handleStartAnalysis(repo.url);
-                    }}
-                    className="flex items-center justify-between p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 cursor-pointer transition-all group"
+              {/* GitHub Connected Search & Actions Bar */}
+              {user?.githubConnected ? (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={repoSearch}
+                      onChange={(e) => setRepoSearch(e.target.value)}
+                      placeholder="Search your repositories by name, language..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchUserRepos()}
+                    disabled={loadingRepos}
+                    title="Refresh repositories list"
+                    className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-all disabled:opacity-50"
                   >
-                    <div className="space-y-1">
-                      <div className="text-sm font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">
-                        {repo.name}
-                      </div>
-                      <div className="text-xs text-slate-500 flex items-center gap-3">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-400">
-                          {repo.lang}
-                        </span>
-                        <span>★ {repo.stars}</span>
-                        <span>Updated {repo.updated}</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingRepos ? 'animate-spin text-indigo-400' : ''}`} />
+                  </button>
+                </div>
+              ) : (
+                <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="space-y-1 text-center sm:text-left">
+                      <div className="text-sm font-semibold text-white">Connect Your GitHub Account</div>
+                      <div className="text-xs text-slate-400">
+                        Authorize Paradox to list your personal repositories (public & private) for direct one-click analysis.
                       </div>
                     </div>
-                    <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600/20 text-indigo-300 text-xs font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                      Analyze <ArrowRight className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={() => loginWithGithub('/repo-analysis')}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#24292f] hover:bg-[#1b1f23] text-white text-xs font-bold border border-slate-700 shadow-md transition-all shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+                      </svg>
+                      Connect GitHub
                     </button>
                   </div>
-                ))}
-              </div>
+
+                  <div className="pt-3 border-t border-slate-800/80">
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1.5">
+                      Or fetch public repositories by GitHub username:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={githubUsernameInput}
+                        onChange={(e) => setGithubUsernameInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && fetchUserRepos(githubUsernameInput)}
+                        placeholder="e.g. Srajan05-ui"
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fetchUserRepos(githubUsernameInput)}
+                        disabled={loadingRepos || !githubUsernameInput.trim()}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-50 transition-all"
+                      >
+                        Fetch Repos
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Loading State */}
+              {loadingRepos && (
+                <div className="p-8 rounded-2xl bg-slate-950 border border-slate-800 text-center space-y-3">
+                  <div className="w-8 h-8 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                  <div className="text-xs text-slate-400">Loading GitHub repositories...</div>
+                </div>
+              )}
+
+              {/* Error Message */}
+              {reposError && !loadingRepos && (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{reposError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchUserRepos()}
+                    className="underline hover:text-rose-300 shrink-0 font-medium"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Real Repositories List */}
+              {!loadingRepos && realRepos.length > 0 && (
+                <div className="space-y-2.5">
+                  {realRepos
+                    .filter((repo) => {
+                      const query = repoSearch.toLowerCase().trim();
+                      if (!query) return true;
+                      return (
+                        repo.name.toLowerCase().includes(query) ||
+                        repo.fullName.toLowerCase().includes(query) ||
+                        (repo.lang && repo.lang.toLowerCase().includes(query)) ||
+                        (repo.description && repo.description.toLowerCase().includes(query))
+                      );
+                    })
+                    .map((repo) => (
+                      <div
+                        key={repo.fullName || repo.name}
+                        onClick={() => {
+                          setRepoUrl(repo.url);
+                          if (repo.defaultBranch) setBranch(repo.defaultBranch);
+                          handleStartAnalysis(repo.url);
+                        }}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 cursor-pointer transition-all group shadow-sm"
+                      >
+                        <div className="space-y-1.5 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors truncate">
+                              {repo.fullName || repo.name}
+                            </span>
+                            {repo.isPrivate ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-medium">
+                                <Lock className="w-2.5 h-2.5" /> Private
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-medium">
+                                Public
+                              </span>
+                            )}
+                          </div>
+
+                          {repo.description && (
+                            <p className="text-xs text-slate-400 line-clamp-1">{repo.description}</p>
+                          )}
+
+                          <div className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300">
+                              {repo.lang}
+                            </span>
+                            <span>★ {repo.stars}</span>
+                            <span>Updated {repo.updated}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600/20 text-indigo-300 text-xs font-semibold group-hover:bg-indigo-600 group-hover:text-white transition-all shrink-0"
+                        >
+                          Analyze <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                  {/* Empty search filter result */}
+                  {realRepos.filter((repo) => {
+                    const query = repoSearch.toLowerCase().trim();
+                    if (!query) return true;
+                    return (
+                      repo.name.toLowerCase().includes(query) ||
+                      repo.fullName.toLowerCase().includes(query) ||
+                      (repo.lang && repo.lang.toLowerCase().includes(query))
+                    );
+                  }).length === 0 && (
+                    <div className="p-8 text-center text-xs text-slate-400 bg-slate-950/60 rounded-2xl border border-slate-800">
+                      No repositories found matching &ldquo;{repoSearch}&rdquo;.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

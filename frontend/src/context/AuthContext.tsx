@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         avatarUrl: session.user.image || undefined,
         targetRole: localUser?.targetRole || 'Full Stack Engineer',
         experienceLevel: localUser?.experienceLevel || 'Senior',
-        githubConnected: isGitHub || Boolean((session as any)?.accessToken),
-        githubAccessTokenRef: (session as any)?.accessToken,
+        githubConnected: isGitHub,
+        githubAccessTokenRef: isGitHub ? ((session as any)?.githubAccessToken || (session as any)?.accessToken) : undefined,
         createdAt: localUser?.createdAt || new Date().toISOString(),
       };
     }
