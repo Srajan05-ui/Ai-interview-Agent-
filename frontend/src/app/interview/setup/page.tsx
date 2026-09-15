@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Camera, Mic, Play, Settings, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { safeFetchJson } from '@/lib/api';
 
-export default function SetupPage() {
+function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const skillsParam = searchParams.get('skills');
@@ -210,5 +211,13 @@ export default function SetupPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SetupPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div></div>}>
+      <SetupForm />
+    </Suspense>
   );
 }
