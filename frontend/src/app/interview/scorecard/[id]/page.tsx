@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Award, ArrowRight, CheckCircle2, AlertCircle, Quote, Sparkles, Map } from 'lucide-react';
 import { Scorecard } from '@/types';
+import { safeFetchJson } from '@/lib/api';
 
 export default function ScorecardPage() {
   const params = useParams();
@@ -18,10 +19,9 @@ export default function ScorecardPage() {
   useEffect(() => {
     async function loadScorecard() {
       try {
-        const res = await fetch(`/api/interview/${id}/scorecard`);
-        if (res.ok) {
-          const data = await res.json();
-          setScorecard(data);
+        const res = await safeFetchJson<Scorecard>(`/api/interview/${id}/scorecard`);
+        if (res.ok && res.data) {
+          setScorecard(res.data);
         } else {
           // Fallback demo scorecard if newly tested
           setScorecard({
@@ -73,7 +73,7 @@ export default function ScorecardPage() {
   const handleSendToRoadmap = async () => {
     setSendingRoadmap(true);
     try {
-      const res = await fetch('/api/roadmap', {
+      const res = await safeFetchJson<{ roadmapId?: string }>('/api/roadmap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -81,9 +81,8 @@ export default function ScorecardPage() {
           sourceId: scorecard?.id || id,
         }),
       });
-      const data = await res.json();
-      if (data.roadmapId) {
-        router.push(`/roadmap?id=${data.roadmapId}`);
+      if (res.ok && res.data?.roadmapId) {
+        router.push(`/roadmap?id=${res.data.roadmapId}`);
       }
     } catch (e) {
       console.error('Failed sending to roadmap:', e);

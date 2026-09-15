@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { GitBranch, Globe, GitFork, Sparkles, ArrowRight, CheckCircle2, ShieldCheck, AlertTriangle, Code2, Map, Search, RefreshCw, Lock } from 'lucide-react';
 import { RepoAnalysis } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { safeFetchJson } from '@/lib/api';
 
 interface GitHubRepoItem {
   id?: number;
@@ -50,16 +51,17 @@ export default function RepoAnalysisPage() {
     try {
       const usernameToFetch = customUsername || githubUsernameInput;
       const query = usernameToFetch ? `?username=${encodeURIComponent(usernameToFetch)}` : '';
-      const res = await fetch(`/api/user/repos${query}`);
-      const data = await res.json();
-      if (res.ok && data.repos && data.repos.length > 0) {
-        setRealRepos(data.repos);
-      } else if (data.repos && data.repos.length === 0 && !data.connected) {
+      const result = await safeFetchJson<{ repos?: GitHubRepoItem[]; connected?: boolean; error?: string }>(
+        `/api/user/repos${query}`
+      );
+      if (result.ok && result.data?.repos && result.data.repos.length > 0) {
+        setRealRepos(result.data.repos);
+      } else if (result.data?.repos && result.data.repos.length === 0 && !result.data.connected) {
         setReposError('No connected GitHub repositories found. Connect your GitHub account or enter your username.');
-      } else if (data.error) {
-        setReposError(data.error);
+      } else if (result.error || result.data?.error) {
+        setReposError(result.error || result.data?.error || 'Failed loading repositories.');
       } else {
-        setRealRepos(data.repos || []);
+        setRealRepos(result.data?.repos || []);
       }
     } catch (e: any) {
       setReposError(e?.message || 'Error communicating with GitHub.');
@@ -87,32 +89,34 @@ export default function RepoAnalysisPage() {
     setErrorDetails(null);
 
     try {
-      const res = await fetch('/api/repo-analysis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          repoUrl: urlToUse,
-          branch,
-        }),
-      });
+      const result = await safeFetchJson<{ repoAnalysisId?: string; error?: { message: string } }>(
+        '/api/repo-analysis',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoUrl: urlToUse,
+            branch,
+          }),
+        }
+      );
 
-      const data = await res.json();
-      if (data.error) {
+      if (!result.ok || !result.data?.repoAnalysisId) {
         setAnalysisState('failed');
-        setErrorDetails(data.error.message);
+        setErrorDetails(result.error || result.data?.error?.message || 'Failed initiating analysis.');
         return;
       }
 
-      const jobId = data.repoAnalysisId;
+      const jobId = result.data.repoAnalysisId;
 
       // Poll status machine
       let attempts = 0;
       const interval = setInterval(async () => {
         attempts++;
         try {
-          const pollRes = await fetch(`/api/repo-analysis/${jobId}`);
-          if (pollRes.ok) {
-            const jobData: RepoAnalysis = await pollRes.json();
+          const pollRes = await safeFetchJson<RepoAnalysis>(`/api/repo-analysis/${jobId}`);
+          if (pollRes.ok && pollRes.data) {
+            const jobData = pollRes.data;
             setAnalysisState(jobData.status);
             setStatusMessage(jobData.statusMessage || 'Processing...');
             if (jobData.filesAnalyzedCount) setFilesCount(jobData.filesAnalyzedCount);
@@ -135,10 +139,10 @@ export default function RepoAnalysisPage() {
           setErrorDetails('Operation timed out. Please retry.');
         }
       }, 1200);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed initiating repo analysis:', err);
       setAnalysisState('failed');
-      setErrorDetails('Network error contacting analysis service.');
+      setErrorDetails(err?.message || 'Network error contacting analysis service.');
     }
   };
 
@@ -146,12 +150,14 @@ export default function RepoAnalysisPage() {
     if (!analysisResult) return;
     setIsSendingToRoadmap(true);
     try {
-      const res = await fetch(`/api/repo-analysis/${analysisResult.id}/send-to-roadmap`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (data.roadmapId) {
-        router.push(`/roadmap?id=${data.roadmapId}`);
+      const res = await safeFetchJson<{ roadmapId?: string }>(
+        `/api/repo-analysis/${analysisResult.id}/send-to-roadmap`,
+        {
+          method: 'POST',
+        }
+      );
+      if (res.ok && res.data?.roadmapId) {
+        router.push(`/roadmap?id=${res.data.roadmapId}`);
       } else {
         router.push('/roadmap');
       }

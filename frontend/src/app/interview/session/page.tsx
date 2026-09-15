@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Send, Mic, MicOff, Volume2, VolumeX, ShieldAlert, CheckCircle, Terminal, User } from 'lucide-react';
 import CodeEditorPanel from '@/components/CodeEditorPanel';
 import { InterviewTurn, AntiCheatFlag } from '@/types';
+import { safeFetchJson } from '@/lib/api';
 
 function InterviewSessionContent() {
   const searchParams = useSearchParams();
@@ -122,26 +123,29 @@ function InterviewSessionContent() {
     setTranscript((prev) => [...prev, newCandidateTurn]);
 
     try {
-      const res = await fetch(`/api/interview/${interviewId}/answer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: candidateText,
-          codeSnapshot: currentCode,
-          language: currentLang,
-        }),
-      });
+      const res = await safeFetchJson<{ nextQuestion?: string }>(
+        `/api/interview/${interviewId}/answer`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: candidateText,
+            codeSnapshot: currentCode,
+            language: currentLang,
+          }),
+        }
+      );
 
-      const data = await res.json();
-      if (data.nextQuestion) {
+      if (res.ok && res.data?.nextQuestion) {
+        const nextQuestion = res.data.nextQuestion;
         const agentTurn: InterviewTurn = {
           id: `turn-${Date.now() + 1}`,
           role: 'agent',
-          text: data.nextQuestion,
+          text: nextQuestion,
           timestamp: new Date().toISOString(),
         };
         setTranscript((prev) => [...prev, agentTurn]);
-        speakText(data.nextQuestion);
+        speakText(nextQuestion);
       }
     } catch (err) {
       console.error('Answer submission error:', err);
@@ -154,12 +158,14 @@ function InterviewSessionContent() {
     if (!confirm('Are you ready to submit and conclude this interview? The AI will grade your transcript and code.')) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/interview/${interviewId}/complete`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (data.scorecardId) {
-        router.push(`/interview/scorecard/${data.scorecardId}`);
+      const res = await safeFetchJson<{ scorecardId?: string }>(
+        `/api/interview/${interviewId}/complete`,
+        {
+          method: 'POST',
+        }
+      );
+      if (res.ok && res.data?.scorecardId) {
+        router.push(`/interview/scorecard/${res.data.scorecardId}`);
       } else {
         router.push(`/interview/scorecard/${interviewId}`);
       }

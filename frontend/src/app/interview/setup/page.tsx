@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Terminal, Mic, Video, ShieldCheck, ArrowRight, GitBranch, Radio, Lock } from 'lucide-react';
+import { Terminal, Mic, Video, ShieldCheck, ArrowRight, GitBranch, Radio, Lock, AlertTriangle } from 'lucide-react';
 import { InterviewMode, CompanyStyle, RoleLevel } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { safeFetchJson } from '@/lib/api';
 
 export default function InterviewSetupPage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function InterviewSetupPage() {
   const [language, setLanguage] = useState('English');
   const [attachedRepoUrl, setAttachedRepoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   // Hardware check states
   const [micActive, setMicActive] = useState(true);
@@ -30,27 +32,35 @@ export default function InterviewSetupPage() {
       return;
     }
     setIsLoading(true);
+    setSetupError(null);
     try {
-      const res = await fetch('/api/interview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config: {
-            role,
-            experienceLevel,
-            mode,
-            companyStyle,
-            language,
-            attachedRepoUrl: attachedRepoUrl || undefined,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.interviewId) {
-        router.push(`/interview/session?id=${data.interviewId}`);
+      const result = await safeFetchJson<{ interviewId?: string }>(
+        '/api/interview',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            config: {
+              role,
+              experienceLevel,
+              mode,
+              companyStyle,
+              language,
+              attachedRepoUrl: attachedRepoUrl || undefined,
+            },
+          }),
+        }
+      );
+
+      if (result.ok && result.data?.interviewId) {
+        router.push(`/interview/session?id=${result.data.interviewId}`);
+      } else {
+        setSetupError(result.error || 'Unable to launch interview session. Please verify backend service.');
+        setIsLoading(false);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error starting interview session:', e);
+      setSetupError(e?.message || 'Error starting interview session.');
       setIsLoading(false);
     }
   };
@@ -245,6 +255,13 @@ export default function InterviewSetupPage() {
             <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-xs text-indigo-300 leading-relaxed">
               💡 <strong>Interview Tip:</strong> Communicate your thought process out loud. The AI tracks both algorithmic correctness and architectural explanation.
             </div>
+
+            {setupError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{setupError}</span>
+              </div>
+            )}
 
             <button
               type="button"

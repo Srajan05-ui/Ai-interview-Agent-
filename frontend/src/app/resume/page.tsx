@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { UploadCloud, FileText, Sparkles, CheckCircle2, ArrowRight, TrendingUp, Lock } from 'lucide-react';
 import { ResumeFeedback } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { safeFetchJson } from '@/lib/api';
 
 export default function ResumePage() {
   const router = useRouter();
@@ -24,17 +25,21 @@ export default function ResumePage() {
     }
     setLoading(true);
     try {
-      const res = await fetch('/api/resume', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName,
-          text: resumeText,
-        }),
-      });
-      const data = await res.json();
-      setAtsScore(data.atsScore || 87);
-      setFeedback(data.feedback);
+      const res = await safeFetchJson<{ atsScore?: number; feedback?: ResumeFeedback }>(
+        '/api/resume',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName,
+            text: resumeText,
+          }),
+        }
+      );
+      if (res.ok && res.data) {
+        setAtsScore(res.data.atsScore || 87);
+        setFeedback(res.data.feedback || null);
+      }
     } catch (e) {
       console.error('Failed analyzing resume:', e);
     } finally {
