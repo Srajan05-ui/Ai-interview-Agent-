@@ -58,14 +58,12 @@ function LoginForm() {
     setError(null);
     try {
       if (provider === 'google') {
-        await loginWithGoogle();
+        await loginWithGoogle(redirectPath);
       } else {
-        await loginWithGithub();
+        await loginWithGithub(redirectPath);
       }
-      router.push(redirectPath);
     } catch (err: any) {
       setError('Social authentication failed.');
-    } finally {
       setLoading(false);
     }
   };

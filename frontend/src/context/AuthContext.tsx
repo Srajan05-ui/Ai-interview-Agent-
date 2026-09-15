@@ -9,8 +9,8 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password?: string) => Promise<void>;
   signup: (name: string, email: string, targetRole: string, experienceLevel: RoleLevel, password?: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginWithGithub: () => Promise<void>;
+  loginWithGoogle: (redirectTo?: string) => Promise<void>;
+  loginWithGithub: (redirectTo?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -95,12 +95,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveLocalUser(candidate);
   };
 
-  const loginWithGoogle = async () => {
-    await nextAuthSignIn('google');
+  const loginWithGoogle = async (redirectTo?: string) => {
+    await nextAuthSignIn('google', { redirectTo: redirectTo || '/' });
   };
 
-  const loginWithGithub = async () => {
-    await nextAuthSignIn('github');
+  const loginWithGithub = async (redirectTo?: string) => {
+    await nextAuthSignIn('github', { redirectTo: redirectTo || '/' });
   };
 
   const logout = async () => {
