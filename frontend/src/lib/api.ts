@@ -16,8 +16,11 @@ export async function safeFetchJson<T = any>(
   try {
     let url = input;
     if (typeof url === 'string' && url.startsWith('/api')) {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
-      url = `${backendUrl}${url}`;
+      // Exclude Next.js internal API routes (like auth callbacks and user routes)
+      if (!url.startsWith('/api/user') && !url.startsWith('/api/auth')) {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+        url = `${backendUrl}${url}`;
+      }
     }
 
     const res = await fetch(url, init);
