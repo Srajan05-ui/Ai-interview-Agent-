@@ -17,7 +17,7 @@ export async function callLLM(systemPrompt: string, userMessage: string, maxToke
         }),
       });
       if (geminiRes.ok) {
-        const data = await geminiRes.json();
+        const data = await geminiRes.json() as any;
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) return text.trim();
       }
@@ -36,7 +36,7 @@ export async function callLLM(systemPrompt: string, userMessage: string, maxToke
         }),
       });
       if (groqRes.ok) {
-        const data = await groqRes.json();
+        const data = await groqRes.json() as any;
         const text = data?.choices?.[0]?.message?.content;
         if (text) return text.trim();
       }
@@ -55,7 +55,7 @@ export async function callLLM(systemPrompt: string, userMessage: string, maxToke
         }),
       });
       if (openaiRes.ok) {
-        const data = await openaiRes.json();
+        const data = await openaiRes.json() as any;
         const text = data?.choices?.[0]?.message?.content;
         if (text) return text.trim();
       }

@@ -1,6 +1,6 @@
 export type RoleLevel = 'Junior' | 'Mid-Level' | 'Senior' | 'Lead' | 'Staff';
 
-export type InterviewMode = 'Technical Q&A' | 'Live Coding' | 'Behavioral';
+export type InterviewMode = 'Technical Q&A' | 'Live Coding' | 'Behavioral' | 'Conceptual / System Design';
 
 export type CompanyStyle = 'Google-style' | 'Startup-style' | 'Amazon-style' | 'Meta-style' | 'General';
 
