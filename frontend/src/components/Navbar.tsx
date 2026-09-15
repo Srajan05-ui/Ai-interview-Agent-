@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import Image from 'next/image';
 import { Sparkles, Terminal, FileText, GitBranch, Map, User as UserIcon, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import AuthModal from '@/components/AuthModal';
@@ -39,9 +40,9 @@ export default function Navbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Brand */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
-              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-                <Terminal className="w-5 h-5 text-indigo-400" />
+            <div className="w-10 h-10 rounded-xl bg-slate-950 p-0.5 shadow-lg shadow-indigo-500/10 group-hover:shadow-indigo-500/20 transition-all border border-slate-800">
+              <div className="w-full h-full rounded-[10px] flex items-center justify-center overflow-hidden">
+                <Image src="/logo.png" alt="Paradox Logo" width={32} height={32} className="object-contain w-full h-full" />
               </div>
             </div>
             <div>
