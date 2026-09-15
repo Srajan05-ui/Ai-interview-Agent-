@@ -19,15 +19,15 @@ export default function SplashScreen() {
     // Mark as seen
     sessionStorage.setItem('hasSeenSplash', 'true');
 
-    // Start fade out after 5 seconds for a slower, cinematic feel
+    // Start fade out after 2.5 seconds
     const fadeTimer = setTimeout(() => {
       setIsFadingOut(true);
-    }, 5000);
+    }, 2500);
 
-    // Completely remove from DOM after 6.5 seconds
+    // Completely remove from DOM after 3 seconds
     const removeTimer = setTimeout(() => {
       setIsVisible(false);
-    }, 6500);
+    }, 3000);
 
     return () => {
       clearTimeout(fadeTimer);
@@ -39,33 +39,49 @@ export default function SplashScreen() {
 
   return (
     <div 
-      className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black transition-opacity duration-[1500ms] ease-in-out ${
+      className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#050914] transition-opacity duration-700 ease-in-out ${
         isFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       } overflow-hidden`}
     >
-      {/* Light sweep effect across the screen */}
-      <div className="absolute top-0 bottom-0 w-[200%] bg-gradient-to-r from-transparent via-white to-transparent opacity-5 animate-[cinematic-light-sweep_4s_ease-in-out_forwards] blur-[100px] transform -skew-x-[30deg]"></div>
+      {/* Background Cyber Grid */}
+      <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#6366f1 1px, transparent 1px), linear-gradient(90deg, #6366f1 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+      
+      {/* Scanline */}
+      <div className="absolute inset-0 pointer-events-none opacity-20 bg-gradient-to-b from-transparent via-indigo-500 to-transparent h-20 animate-[scanline_3s_linear_infinite]"></div>
 
-      <div className="relative flex flex-col items-center justify-center h-full animate-[cinematic-fade-scale_6s_ease-out_forwards]">
-        {/* Subtle cinematic glow behind logo */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-slate-100/5 blur-[80px] rounded-full"></div>
+      <div className="relative flex flex-col items-center animate-[popin_0.8s_ease-out_forwards]">
+        {/* Glow behind logo */}
+        <div className="absolute inset-0 bg-indigo-500/30 blur-[60px] rounded-full animate-pulse"></div>
         
-        {/* Logo (no background box, just pure logo) */}
-        <div className="relative z-10 flex items-center justify-center">
+        {/* Logo Container with Cyberpulse */}
+        <div className="relative rounded-full animate-[cyberpulse_2s_infinite] p-4 bg-slate-900/50 border border-indigo-500/30 backdrop-blur-md">
           <Image 
             src="/logo.png" 
             alt="Paradox Logo" 
-            width={160} 
-            height={160} 
-            className="object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] filter grayscale contrast-125 brightness-150"
+            width={180} 
+            height={180} 
+            className="object-contain drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]"
             priority
           />
         </div>
 
-        {/* Cinematic Text Reveal */}
-        <div className="mt-8 flex flex-col items-center z-10">
-          <div className="text-xl sm:text-2xl font-light text-slate-200 uppercase animate-[cinematic-text-reveal_5s_ease-out_forwards]">
-            A <span className="font-semibold text-white">Paradox</span> Production
+        {/* Text Area */}
+        <div className="mt-10 flex flex-col items-center">
+          <div className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 tracking-[0.2em] uppercase relative">
+            Paradox AI
+            {/* Glitch Overlay */}
+            <span className="absolute inset-0 text-indigo-500 opacity-50 animate-[glitch_2s_infinite]">Paradox AI</span>
+          </div>
+          
+          <div className="text-indigo-400/60 font-mono text-[10px] tracking-widest mt-3 uppercase animate-pulse">
+            Initializing neural pathways...
+          </div>
+        </div>
+
+        {/* Futuristic Loader */}
+        <div className="mt-10 relative w-64 h-[2px] bg-slate-800/80 rounded-full overflow-hidden">
+          <div className="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-600 via-cyan-400 to-indigo-600 rounded-full w-0 animate-[progress_2.5s_cubic-bezier(0.4,0,0.2,1)_forwards]">
+            <div className="absolute inset-0 bg-white/20 animate-[progress_1s_ease-in-out_infinite_alternate]"></div>
           </div>
         </div>
       </div>
