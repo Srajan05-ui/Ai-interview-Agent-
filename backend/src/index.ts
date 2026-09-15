@@ -29,6 +29,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'ai-interview-agent-backend', timestamp: new Date().toISOString() });
 });
 
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'ai-interview-agent-backend', timestamp: new Date().toISOString() });
+});
+
 // Mount modular routers
 app.use('/api/interview', interviewRouter);
 app.use('/api/repo-analysis', repoAnalysisRouter);
