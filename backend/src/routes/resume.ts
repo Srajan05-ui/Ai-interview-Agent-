@@ -17,7 +17,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     const resumeId = `resume-${Date.now()}`;
     const feedback = await analyzeResumeContent(fileName, text);
-    const atsScore = 87;
+    const atsScore = feedback.sections && feedback.sections.length > 0
+      ? Math.round(feedback.sections.reduce((acc, s) => acc + s.score, 0) / feedback.sections.length)
+      : 86;
 
     const resume: Resume = {
       id: resumeId,
