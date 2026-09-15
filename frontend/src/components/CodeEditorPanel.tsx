@@ -11,7 +11,13 @@ interface CodeEditorPanelProps {
 }
 
 const STARTER_SNIPPETS: Record<string, string> = {
-  typescript: `class LRUCache {
+  typescript: `// ====================================================
+// STARTER TEMPLATE: Provided by AI Interviewer
+// Note: You can modify or completely erase this code 
+// to solve the challenge presented by the interviewer.
+// ====================================================
+
+class LRUCache {
   private capacity: number;
   private cache: Map<number, number>;
 
@@ -47,7 +53,13 @@ console.log("get(1):", cache.get(1)); // returns 1
 cache.put(3, 3); // evicts key 2
 console.log("get(2):", cache.get(2)); // returns -1
 `,
-  python: `class LRUCache:
+  python: `# ====================================================
+# STARTER TEMPLATE: Provided by AI Interviewer
+# Note: You can modify or completely erase this code 
+# to solve the challenge presented by the interviewer.
+# ====================================================
+
+class LRUCache:
     def __init__(self, capacity: int):
         self.capacity = capacity
         self.cache = {}
@@ -75,7 +87,13 @@ print("get(1):", cache.get(1))
 cache.put(3, 3)
 print("get(2):", cache.get(2))
 `,
-  go: `package main
+  go: `// ====================================================
+// STARTER TEMPLATE: Provided by AI Interviewer
+// Note: You can modify or completely erase this code 
+// to solve the challenge presented by the interviewer.
+// ====================================================
+
+package main
 
 import "fmt"
 

@@ -1,278 +1,212 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Terminal, Mic, Video, ShieldCheck, ArrowRight, GitBranch, Radio, Lock, AlertTriangle } from 'lucide-react';
-import { InterviewMode, CompanyStyle, RoleLevel } from '@/types';
-import { useAuth } from '@/context/AuthContext';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Camera, Mic, Play, Settings, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { safeFetchJson } from '@/lib/api';
 
-export default function InterviewSetupPage() {
+export default function SetupPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const skillsParam = searchParams.get('skills');
+  const initialSkills = skillsParam ? skillsParam.split(',') : [];
 
-  // Config form state
-  const [role, setRole] = useState('Full Stack Engineer');
-  const [experienceLevel, setExperienceLevel] = useState<RoleLevel>('Senior');
-  const [mode, setMode] = useState<InterviewMode>('Live Coding');
-  const [companyStyle, setCompanyStyle] = useState<CompanyStyle>('Google-style');
-  const [language, setLanguage] = useState('English');
-  const [attachedRepoUrl, setAttachedRepoUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [setupError, setSetupError] = useState<string | null>(null);
+  const [role, setRole] = useState(initialSkills.length > 0 ? initialSkills.join(', ') + ' Engineer' : 'Full Stack Engineer');
+  const [experienceLevel, setExperienceLevel] = useState('Senior');
+  const [mode, setMode] = useState('Live Coding');
+  const [customSkills, setCustomSkills] = useState(initialSkills.join(', '));
 
-  // Hardware check states
-  const [micActive, setMicActive] = useState(true);
-  const [cameraActive, setCameraActive] = useState(true);
-  const [screenShareActive, setScreenShareActive] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [camStatus, setCamStatus] = useState<'checking' | 'ok' | 'error'>('checking');
+  const [micStatus, setMicStatus] = useState<'checking' | 'ok' | 'error'>('checking');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
-  const handleStartInterview = async () => {
-    if (!user) {
-      router.push('/login?feature=Adaptive%20Mock%20Interview&redirect=/interview/setup');
-      return;
-    }
-    setIsLoading(true);
-    setSetupError(null);
-    try {
-      const result = await safeFetchJson<{ interviewId?: string }>(
-        '/api/interview',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            config: {
-              role,
-              experienceLevel,
-              mode,
-              companyStyle,
-              language,
-              attachedRepoUrl: attachedRepoUrl || undefined,
-            },
-          }),
+  useEffect(() => {
+    async function setupDevices() {
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        setStream(mediaStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
         }
-      );
-
-      if (result.ok && result.data?.interviewId) {
-        router.push(`/interview/session?id=${result.data.interviewId}`);
-      } else {
-        setSetupError(result.error || 'Unable to launch interview session. Please verify backend service.');
-        setIsLoading(false);
+        setCamStatus('ok');
+        setMicStatus('ok');
+      } catch (err: any) {
+        console.error('Media devices error:', err);
+        setCamStatus('error');
+        setMicStatus('error');
+        setErrorMsg(err.message || 'Please allow camera and microphone permissions.');
       }
-    } catch (e: any) {
-      console.error('Error starting interview session:', e);
-      setSetupError(e?.message || 'Error starting interview session.');
-      setIsLoading(false);
+    }
+    setupDevices();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []); // Intentionally leaving dependency array empty to run once
+
+  const handleStart = async () => {
+    setIsStarting(true);
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+
+    try {
+      const config = {
+        language: 'English',
+        mode: mode,
+        companyStyle: 'Google-style',
+        role: role,
+        experienceLevel: experienceLevel,
+        detectedSkills: customSkills.split(',').map(s => s.trim()).filter(Boolean),
+      };
+
+      const res = await safeFetchJson<{ interviewId?: string }>('/api/interview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config }),
+      });
+
+      if (res.ok && res.data?.interviewId) {
+        router.push(`/interview/session?id=${res.data.interviewId}`);
+      } else {
+        setErrorMsg('Failed to create interview session.');
+        setIsStarting(false);
+      }
+    } catch (e) {
+      setErrorMsg('Error creating session.');
+      setIsStarting(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Header */}
-      <div>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-medium mb-3">
-          <Terminal className="w-3.5 h-3.5" /> Session Configuration
-        </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">
-          Configure Your Mock Technical Interview
-        </h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Customize the AI interviewer&apos;s style, difficulty, evaluation mode, and hardware permissions.
-        </p>
+    <div className="max-w-4xl mx-auto py-10 space-y-8">
+      <div className="text-center">
+        <h1 className="text-3xl font-extrabold text-white">Pre-flight Check</h1>
+        <p className="text-slate-400 mt-2">Ensure your camera and microphone are working before entering the room.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left 2 Cols: Form Config */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Target Role & Level */}
-          <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-indigo-400"></span> Role & Seniority
-            </h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-slate-900 rounded-3xl border border-slate-800 p-6 shadow-xl flex flex-col items-center">
+          <div className="w-full aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 relative shadow-inner">
+            {stream ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover transform scale-x-[-1]"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-slate-500">
+                <Camera className="w-12 h-12 opacity-50 mb-2" />
+              </div>
+            )}
+            {errorMsg && (
+              <div className="absolute inset-0 bg-slate-950/80 flex items-center justify-center p-4 text-center text-rose-400 text-sm">
+                <AlertTriangle className="w-5 h-5 mr-2" /> {errorMsg}
+              </div>
+            )}
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="w-full mt-6 space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${camStatus === 'ok' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                  <Camera className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-semibold text-slate-200">Camera</span>
+              </div>
+              {camStatus === 'ok' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+            </div>
+            
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${micStatus === 'ok' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                  <Mic className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-semibold text-slate-200">Microphone</span>
+              </div>
+              {micStatus === 'ok' && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-center space-y-6">
+          <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-indigo-400" /> Interview Configuration
+            </h3>
+            
+            <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-2">Target Role</label>
-                <input
-                  type="text"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500 transition-colors"
-                  placeholder="e.g. Senior Backend Engineer"
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Target Role</label>
+                <input 
+                  type="text" 
+                  value={role} 
+                  onChange={e => setRole(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-2">Experience Level</label>
-                <select
-                  value={experienceLevel}
-                  onChange={(e) => setExperienceLevel(e.target.value as RoleLevel)}
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500 transition-colors"
-                >
-                  <option value="Junior">Junior (0-2 years)</option>
-                  <option value="Mid-Level">Mid-Level (2-5 years)</option>
-                  <option value="Senior">Senior (5+ years)</option>
-                  <option value="Staff">Staff / Principal</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Mode & Style */}
-          <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-400"></span> Evaluation Format & Tone
-            </h2>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-2">Interview Mode</label>
-              <div className="grid grid-cols-3 gap-3">
-                {(['Live Coding', 'Technical Q&A', 'Behavioral'] as InterviewMode[]).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => setMode(m)}
-                    className={`py-3 px-3 rounded-xl border text-xs font-semibold transition-all text-center ${
-                      mode === m
-                        ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300 shadow-md shadow-indigo-500/10'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Experience</label>
+                  <select 
+                    value={experienceLevel} 
+                    onChange={e => setExperienceLevel(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
                   >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-2">Target Company Style</label>
-                <select
-                  value={companyStyle}
-                  onChange={(e) => setCompanyStyle(e.target.value as CompanyStyle)}
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500 transition-colors"
-                >
-                  <option value="Google-style">Google-style (Algorithmic & Scale)</option>
-                  <option value="Startup-style">Startup-style (Pragmatic & Shipping)</option>
-                  <option value="Amazon-style">Amazon-style (Leadership Principles & Depth)</option>
-                  <option value="Meta-style">Meta-style (Fast Execution & Architecture)</option>
-                  <option value="General">General Technical</option>
-                </select>
+                    <option value="Junior">Junior</option>
+                    <option value="Mid-level">Mid-level</option>
+                    <option value="Senior">Senior</option>
+                    <option value="Lead/Principal">Lead/Principal</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Mode</label>
+                  <select 
+                    value={mode} 
+                    onChange={e => setMode(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+                  >
+                    <option value="Live Coding">Live Coding</option>
+                    <option value="Conceptual / System Design">System Design</option>
+                    <option value="Behavioral">Behavioral</option>
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-2">Spoken Language</label>
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500 transition-colors"
-                >
-                  <option value="English">English</option>
-                  <option value="Spanish">Spanish</option>
-                  <option value="German">German</option>
-                  <option value="French">French</option>
-                </select>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Key Skills (comma-separated)</label>
+                <input 
+                  type="text" 
+                  value={customSkills} 
+                  onChange={e => setCustomSkills(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 outline-none focus:border-indigo-500"
+                  placeholder="e.g. React, Python, AWS..."
+                />
               </div>
             </div>
           </div>
-
-          {/* Attach GitHub Repo (Optional Stretch P2) */}
-          <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <GitBranch className="w-4 h-4 text-emerald-400" /> Attach Portfolio Project (Optional)
-              </h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                P2 Feature
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">
-              Link your repository so the interviewer can ask questions directly referencing your actual architecture and codebase.
-            </p>
-            <input
-              type="text"
-              value={attachedRepoUrl}
-              onChange={(e) => setAttachedRepoUrl(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-200 outline-none focus:border-emerald-500 transition-colors"
-              placeholder="https://github.com/username/project"
-            />
-          </div>
-        </div>
-
-        {/* Right Col: Hardware Verification & Launch */}
-        <div className="space-y-6">
-          <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-5">
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" /> Pre-Flight Hardware Check
-            </h2>
-
-            <div className="space-y-3">
-              {/* Mic check */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <Mic className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs text-slate-300">Microphone</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMicActive(!micActive)}
-                  className={`text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
-                    micActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-                  }`}
-                >
-                  {micActive ? 'Ready' : 'Muted'}
-                </button>
-              </div>
-
-              {/* Camera check */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <Video className="w-4 h-4 text-sky-400" />
-                  <span className="text-xs text-slate-300">Camera Feed</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCameraActive(!cameraActive)}
-                  className={`text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
-                    cameraActive ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-700 text-slate-400'
-                  }`}
-                >
-                  {cameraActive ? 'Connected' : 'Disabled'}
-                </button>
-              </div>
-
-              {/* Anti-cheat screen share */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <Radio className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs text-slate-300">Integrity Monitor</span>
-                </div>
-                <span className="text-[11px] font-semibold px-2 py-1 rounded-md bg-amber-500/10 text-amber-400">
-                  Tab Logger Active
-                </span>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/20 text-xs text-indigo-300 leading-relaxed">
-              💡 <strong>Interview Tip:</strong> Communicate your thought process out loud. The AI tracks both algorithmic correctness and architectural explanation.
-            </div>
-
-            {setupError && (
-              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{setupError}</span>
-              </div>
+          
+          <button
+            onClick={handleStart}
+            disabled={camStatus !== 'ok' || micStatus !== 'ok' || isStarting}
+            className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-lg shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-3 transition-all"
+          >
+            {isStarting ? (
+              <span className="animate-pulse">Creating Session...</span>
+            ) : (
+              <>
+                <Play className="w-5 h-5" /> Start Interview
+              </>
             )}
-
-            <button
-              type="button"
-              onClick={handleStartInterview}
-              disabled={isLoading}
-              className="w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-sky-500 hover:opacity-95 text-white font-bold text-sm shadow-xl shadow-indigo-500/25 disabled:opacity-50 transition-all hover:scale-[1.01]"
-            >
-              {isLoading ? 'Starting Session...' : 'Enter Live Interview'}
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+          </button>
         </div>
       </div>
     </div>

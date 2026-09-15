@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Send, Mic, MicOff, Volume2, VolumeX, ShieldAlert, CheckCircle, Terminal, User } from 'lucide-react';
+import { Send, Mic, MicOff, Volume2, VolumeX, ShieldAlert, CheckCircle, Terminal, User, List, Camera } from 'lucide-react';
 import CodeEditorPanel from '@/components/CodeEditorPanel';
 import { Interview, InterviewConfig, InterviewTurn, AntiCheatFlag } from '@/types';
 import { safeFetchJson } from '@/lib/api';
@@ -15,7 +15,12 @@ function getStarterCode(config: InterviewConfig | null): string | undefined {
   const isML = role.includes('ml') || role.includes('data') || role.includes('machine') || role.includes('ai');
 
   if (isFrontend) {
-    return `// Frontend Technical Challenge: Custom EventEmitter & Debounce
+    return `// ====================================================
+// STARTER TEMPLATE: Provided by AI Interviewer
+// Note: You can modify or completely erase this code.
+// ====================================================
+
+// Frontend Technical Challenge: Custom EventEmitter & Debounce
 export class EventEmitter {
   private events: Map<string, Function[]> = new Map();
 
@@ -49,7 +54,12 @@ export function debounce<T extends (...args: any[]) => any>(
   }
 
   if (isBackend) {
-    return `// Backend Technical Challenge: Token Bucket Rate Limiter
+    return `// ====================================================
+// STARTER TEMPLATE: Provided by AI Interviewer
+// Note: You can modify or completely erase this code.
+// ====================================================
+
+// Backend Technical Challenge: Token Bucket Rate Limiter
 export class TokenBucketRateLimiter {
   private capacity: number;
   private refillRatePerSecond: number;
@@ -83,7 +93,12 @@ export class TokenBucketRateLimiter {
   }
 
   if (isML) {
-    return `// ML Engineering Challenge: Vector Cosine Similarity & Top-K Search
+    return `// ====================================================
+// STARTER TEMPLATE: Provided by AI Interviewer
+// Note: You can modify or completely erase this code.
+// ====================================================
+
+// ML Engineering Challenge: Vector Cosine Similarity & Top-K Search
 export function cosineSimilarity(vecA: number[], vecB: number[]): number {
   if (vecA.length !== vecB.length || vecA.length === 0) return 0;
   let dotProduct = 0;
@@ -110,6 +125,7 @@ function InterviewSessionContent() {
 
   const [config, setConfig] = useState<InterviewConfig | null>(null);
   const [transcript, setTranscript] = useState<InterviewTurn[]>([]);
+  const [questionBank, setQuestionBank] = useState<string[]>([]);
   const [loadingSession, setLoadingSession] = useState(true);
 
   const [inputText, setInputText] = useState('');
@@ -122,6 +138,21 @@ function InterviewSessionContent() {
   const [lastFlagNotice, setLastFlagNotice] = useState<string | null>(null);
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    if (showCamera) {
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false }).then(s => {
+        stream = s;
+        if (videoRef.current) videoRef.current.srcObject = s;
+      }).catch(e => console.error(e));
+    }
+    return () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    };
+  }, [showCamera]);
 
   // Load real session from backend
   useEffect(() => {
@@ -136,6 +167,9 @@ function InterviewSessionContent() {
           }
           if (fetched.config) {
             setConfig(fetched.config);
+          }
+          if (fetched.questionBank) {
+            setQuestionBank(fetched.questionBank);
           }
         } else {
           // Fallback if demo
@@ -301,16 +335,20 @@ function InterviewSessionContent() {
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col gap-4">
+    <div className="h-[calc(100vh-8rem)] flex flex-col gap-4 relative">
+      {/* Background Effect */}
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/10 via-transparent to-teal-900/10 pointer-events-none rounded-3xl" />
+
       {/* Top Banner with status & anti-cheat */}
-      <div className="flex items-center justify-between px-5 py-2.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-sm shrink-0">
+      <div className="flex items-center justify-between px-5 py-3 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-slate-700/50 shadow-lg shrink-0 relative z-10">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-bold text-white tracking-wide uppercase">Live Session Active</span>
+          <div className="flex items-center gap-2 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping absolute"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 relative"></span>
+            <span className="text-xs font-bold text-emerald-400 tracking-wide uppercase ml-1">Live Session Active</span>
           </div>
           <span className="text-xs text-slate-500 hidden sm:inline">|</span>
-          <span className="text-xs text-slate-400 hidden sm:inline">
+          <span className="text-xs text-slate-300 font-medium hidden sm:inline">
             {config ? `${config.companyStyle} · ${config.experienceLevel} ${config.role} (${config.mode})` : 'Technical Interview Session'}
           </span>
         </div>
@@ -321,6 +359,15 @@ function InterviewSessionContent() {
             <ShieldAlert className={`w-3.5 h-3.5 ${tabSwitchCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`} />
             <span>Anti-Cheat: {tabSwitchCount === 0 ? 'Clean' : `${tabSwitchCount} tab switch(es)`}</span>
           </div>
+
+          {/* Camera Toggle */}
+          <button
+            onClick={() => setShowCamera(!showCamera)}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+            title={showCamera ? 'Disable Camera' : 'Enable Camera'}
+          >
+            <Camera className={`w-4 h-4 ${showCamera ? 'text-emerald-400' : 'text-slate-500'}`} />
+          </button>
 
           {/* TTS Toggle */}
           <button
@@ -349,8 +396,24 @@ function InterviewSessionContent() {
         </div>
       )}
 
+      {/* Planned AI Topics */}
+      {questionBank && questionBank.length > 0 && (
+        <div className="bg-slate-900/80 backdrop-blur-sm rounded-2xl border border-sky-500/20 p-4 shrink-0 shadow-lg shadow-sky-900/20 overflow-x-auto custom-scrollbar z-10 relative">
+           <h4 className="text-[11px] font-bold uppercase tracking-wider text-sky-400 mb-3 flex items-center gap-2">
+             <List className="w-4 h-4" /> Planned AI Topics (Resume-Driven)
+           </h4>
+           <div className="flex gap-2">
+             {questionBank.map((q, i) => (
+               <span key={i} className="px-3 py-1.5 rounded-lg bg-sky-500/10 text-[11px] text-sky-100 whitespace-nowrap border border-sky-500/20 hover:bg-sky-500/20 hover:border-sky-500/40 transition-colors cursor-default shadow-sm">
+                 {q.length > 40 ? q.slice(0, 40) + '...' : q}
+               </span>
+             ))}
+           </div>
+        </div>
+      )}
+
       {/* Main Split Interface */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 min-h-0">
+      <div className={`flex-1 grid grid-cols-1 ${config?.mode === 'Live Coding' ? 'lg:grid-cols-2' : ''} gap-4 min-h-0`}>
         {/* Left Column: Adaptive Conversation Stream */}
         <div className="flex flex-col bg-slate-900/60 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
           <div className="px-4 py-2.5 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between">
@@ -360,14 +423,21 @@ function InterviewSessionContent() {
             <span className="text-[11px] text-slate-500">{transcript.length} turns</span>
           </div>
 
+          {showCamera && (
+            <div className="px-4 py-2 border-b border-slate-800 bg-slate-950 flex justify-center">
+              <video ref={videoRef} autoPlay playsInline muted className="w-48 h-32 object-cover rounded-lg border border-slate-800 transform scale-x-[-1]" />
+            </div>
+          )}
+
           {/* Scrollable messages */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
-            {transcript.map((turn) => {
+          <div className="flex-1 p-4 overflow-y-auto space-y-5 scroll-smooth">
+            {transcript.map((turn, idx) => {
               const isAgent = turn.role === 'agent';
               return (
                 <div
                   key={turn.id}
-                  className={`flex gap-3 ${isAgent ? 'justify-start' : 'justify-end'}`}
+                  className={`flex gap-3 animate-in slide-in-from-bottom-2 fade-in duration-300 ${isAgent ? 'justify-start' : 'justify-end'}`}
+                  style={{ animationFillMode: 'both', animationDelay: `${idx * 50}ms` }}
                 >
                   {isAgent && (
                     <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 p-0.5 shrink-0 shadow-md">
@@ -448,17 +518,21 @@ function InterviewSessionContent() {
         </div>
 
         {/* Right Column: In-browser Live Code Editor */}
-        <div className="h-full">
-          <CodeEditorPanel
-            key={config ? `${config.role}-${config.mode}` : 'default-editor'}
-            initialCode={getStarterCode(config)}
-            onChange={(code) => setCurrentCode(code)}
-            onRun={(code, lang) => {
-              setCurrentCode(code);
-              setCurrentLang(lang);
-            }}
-          />
-        </div>
+        {config?.mode === 'Live Coding' && (
+          <div className="flex flex-col h-full gap-4 min-w-0 z-10 relative">
+            <div className="flex-1 min-h-0">
+              <CodeEditorPanel
+                key={config ? `${config.role}-${config.mode}` : 'default-editor'}
+                initialCode={getStarterCode(config)}
+                onChange={(code) => setCurrentCode(code)}
+                onRun={(code, lang) => {
+                  setCurrentCode(code);
+                  setCurrentLang(lang);
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

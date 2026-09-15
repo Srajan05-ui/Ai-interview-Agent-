@@ -9,70 +9,8 @@ function RoadmapContent() {
   const searchParams = useSearchParams();
   const queryId = searchParams.get('id');
 
-  const [roadmap, setRoadmap] = useState<Roadmap>({
-    id: queryId || 'roadmap-demo',
-    userId: 'user-demo-1',
-    title: 'Senior Engineering Interview Mastery & System Hardening',
-    createdAt: new Date().toISOString(),
-    steps: [
-      {
-        id: 'step-1',
-        topic: 'LRU Cache Eviction & Concurrency Controls',
-        description: 'Practice multi-threaded lock striping and lock-free eviction queues for high-throughput in-memory caching.',
-        estimatedTime: '2 days',
-        completed: true,
-        source: 'interview',
-        resourceLinks: [
-          { title: 'Concurrent LRU Cache Design', url: 'https://github.com/donnemartin/system-design-primer' },
-          { title: 'Go Sync & RWMutex Guide', url: 'https://go.dev/tour/concurrency/9' },
-        ],
-      },
-      {
-        id: 'step-2',
-        topic: 'Defensive Unit Testing & Mocking External I/O',
-        description: 'Set up Vitest/Jest test harness to simulate network timeouts, upstream 503s, and boundary validation.',
-        estimatedTime: '3 days',
-        completed: true,
-        source: 'repo_analysis',
-        resourceLinks: [
-          { title: 'The Practical Test Pyramid by Martin Fowler', url: 'https://martinfowler.com/articles/practical-test-pyramid.html' },
-        ],
-      },
-      {
-        id: 'step-3',
-        topic: 'Distributed Consensus & Raft Leader Election',
-        description: 'Study how distributed data stores handle network partitions, split-brain states, and log replication.',
-        estimatedTime: '4 days',
-        completed: false,
-        source: 'interview',
-        resourceLinks: [
-          { title: 'The Secret Lives of Data (Raft Visualization)', url: 'https://thesecretlivesofdata.com/raft/' },
-        ],
-      },
-      {
-        id: 'step-4',
-        topic: 'Automated GitHub Actions CI/CD Pipeline',
-        description: 'Implement workflow YAML verifying automated linting, typescript checking, and automated coverage reports on pull requests.',
-        estimatedTime: '1 day',
-        completed: false,
-        source: 'repo_analysis',
-        resourceLinks: [
-          { title: 'GitHub Actions Documentation', url: 'https://docs.github.com/en/actions' },
-        ],
-      },
-      {
-        id: 'step-5',
-        topic: 'Database Query Optimization & Composite Indexing',
-        description: 'Analyze EXPLAIN ANALYZE query plans in PostgreSQL/MySQL to eliminate full table scans and reduce p99 latency.',
-        estimatedTime: '2 days',
-        completed: false,
-        source: 'interview',
-        resourceLinks: [
-          { title: 'Use The Index, Luke!', url: 'https://use-the-index-luke.com/' },
-        ],
-      },
-    ],
-  });
+  const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
+  const [isLoading, setIsLoading] = useState(!!queryId);
 
   useEffect(() => {
     if (queryId) {
@@ -80,10 +18,42 @@ function RoadmapContent() {
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data && data.steps) setRoadmap(data);
+          setIsLoading(false);
         })
-        .catch(() => {});
+        .catch(() => setIsLoading(false));
+    } else {
+      setIsLoading(false);
     }
   }, [queryId]);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto flex flex-col items-center justify-center min-h-[50vh] space-y-6">
+        <div className="w-12 h-12 rounded-full border-4 border-indigo-500/30 border-t-indigo-500 animate-spin"></div>
+        <p className="text-slate-400 font-medium animate-pulse">Generating your personalized AI roadmap...</p>
+      </div>
+    );
+  }
+
+  if (!roadmap) {
+    return (
+      <div className="max-w-4xl mx-auto flex flex-col items-center justify-center min-h-[60vh] space-y-6 text-center">
+        <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center shadow-xl shadow-indigo-500/10 border border-slate-800">
+          <Map className="w-10 h-10 text-indigo-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-white tracking-tight">No Roadmap Found</h2>
+        <p className="text-slate-400 max-w-md mx-auto">
+          You haven't generated a learning roadmap yet. Complete a mock interview to get an adaptive study plan tailored to your weak areas!
+        </p>
+        <button 
+          onClick={() => window.location.href = '/interview/setup'}
+          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all"
+        >
+          Take a Mock Interview
+        </button>
+      </div>
+    );
+  }
 
   const toggleStep = async (stepId: string) => {
     const step = roadmap.steps.find((s) => s.id === stepId);
@@ -91,11 +61,11 @@ function RoadmapContent() {
 
     const newCompleted = !step.completed;
 
-    // Optimistic UI update
-    setRoadmap((prev) => ({
+    if (!roadmap) return;
+    setRoadmap((prev) => prev ? ({
       ...prev,
       steps: prev.steps.map((s) => (s.id === stepId ? { ...s, completed: newCompleted } : s)),
-    }));
+    }) : prev);
 
     try {
       await fetch(`/api/roadmap/${roadmap.id}/steps/${stepId}`, {

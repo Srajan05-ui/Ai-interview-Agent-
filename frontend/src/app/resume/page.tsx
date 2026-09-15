@@ -314,6 +314,31 @@ export default function ResumePage() {
             ))}
           </div>
 
+          {/* Detected Skills & Interview CTA */}
+          {feedback.detectedSkills && feedback.detectedSkills.length > 0 && (
+            <div className="p-7 rounded-3xl bg-indigo-900/40 border border-indigo-500/30 shadow-xl space-y-5 text-center">
+              <h3 className="text-lg font-bold text-white flex items-center justify-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-400" /> Detected Core Skills
+              </h3>
+              <div className="flex flex-wrap justify-center gap-2">
+                {feedback.detectedSkills.map(skill => (
+                  <span key={skill} className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-sm font-medium">
+                    {skill}
+                  </span>
+                ))}
+              </div>
+              <p className="text-sm text-slate-300 max-w-lg mx-auto">
+                Ready to put these skills to the test? Start an AI-driven mock interview tailored specifically to your experience.
+              </p>
+              <button
+                onClick={() => router.push(`/interview/setup?skills=${encodeURIComponent(feedback.detectedSkills!.join(','))}`)}
+                className="mx-auto flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-lg shadow-indigo-600/30"
+              >
+                Start Mock Interview <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Bullet Rewrite Suggestions */}
           <div className="p-7 rounded-3xl bg-slate-900/60 border border-slate-800 shadow-xl space-y-5">
             <h3 className="text-base font-bold text-white flex items-center gap-2">

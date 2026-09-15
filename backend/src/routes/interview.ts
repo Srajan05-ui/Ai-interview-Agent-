@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { db } from '../store/db.js';
 import { Interview, InterviewConfig, InterviewTurn, AntiCheatFlag } from '../types/index.js';
-import { generateAdaptiveQuestion, gradeInterview } from '../services/llm/client.js';
+import { generateAdaptiveQuestion, gradeInterview, generateInitialQuestionBank } from '../services/llm/client.js';
 
 const router = Router();
 
@@ -17,6 +17,7 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     const interviewId = `interview-${Date.now()}`;
+    const questionBank = await generateInitialQuestionBank(config, 10);
     const initialQuestion = await generateAdaptiveQuestion(config, []);
 
     const interview: Interview = {
@@ -31,13 +32,14 @@ router.post('/', async (req: Request, res: Response) => {
           timestamp: new Date().toISOString(),
         },
       ],
+      questionBank,
       antiCheatFlags: [],
       status: 'in_progress',
       createdAt: new Date().toISOString(),
     };
 
     db.interviews.set(interviewId, interview);
-    res.json({ interviewId, initialQuestion, config: interview.config, transcript: interview.transcript });
+    res.json({ interviewId, initialQuestion, config: interview.config, transcript: interview.transcript, questionBank });
   } catch (error) {
     console.error('Create interview error:', error);
     res.status(500).json({ error: { code: 'INTERVIEW_CREATE_FAILED', message: 'Could not initialize interview session' } });

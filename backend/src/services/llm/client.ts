@@ -9,11 +9,43 @@ import {
   CitedFeedback,
 } from '../../types/index.js';
 import { StaticSignals } from '../github/analyzer.js';
+import { callLLM } from './llmHelpers.js';
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+export async function generateInitialQuestionBank(
+  config: InterviewConfig,
+  count: number = 10
+): Promise<string[]> {
+  const prompt = `You are a technical interviewer for a ${config.experienceLevel} ${config.role} at a ${config.companyStyle} company.
+${config.detectedSkills && config.detectedSkills.length > 0 ? `The candidate's resume highlights these skills: ${config.detectedSkills.join(', ')}.` : ''}
+
+Generate a bank of ${count} distinct interview questions or topics to evaluate this candidate in a ${config.mode} interview. 
+Format your response as a plain JSON array of strings (do not include markdown blocks like \`\`\`json).
+Example: ["Question 1", "Question 2"]`;
+  
+  const response = await callLLM(prompt, "Please provide the questions.", 800);
+  if (response) {
+    try {
+      const parsed = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (e) {
+      console.warn("Failed to parse initial question bank JSON:", response);
+    }
+  }
+  
+  // Fallback
+  return [
+    `Welcome! Let's start with a general question about your experience with ${config.role}.`,
+    "Can you explain a complex project you worked on recently?",
+    "How do you handle performance optimization?",
+    "Describe a time you had to resolve a difficult bug.",
+    "What is your approach to testing and QA?",
+    "How do you stay up-to-date with new technologies?",
+    "Explain how you design scalable systems.",
+    "Tell me about your experience with CI/CD.",
+    "How do you handle technical debt?",
+    "Do you have any questions for me?"
+  ];
+}
 
 export async function generateAdaptiveQuestion(
   config: InterviewConfig,
@@ -27,10 +59,11 @@ export async function generateAdaptiveQuestion(
   const systemPrompt = `You are a world-class technical interviewer conducting a rigorous, highly adaptive ${config.companyStyle} interview for a ${config.experienceLevel} ${config.role}.
 Interview Mode: ${config.mode}. Spoken Language: ${config.language}.
 ${config.attachedRepoUrl ? `Attached Candidate Portfolio Repository: ${config.attachedRepoUrl}` : ''}
+${config.detectedSkills && config.detectedSkills.length > 0 ? `Candidate's Core Skills (from resume): ${config.detectedSkills.join(', ')}` : ''}
 
 Instructions:
 1. Generate the NEXT question or technical follow-up.
-2. If this is the start (turn 0), introduce the technical challenge directly relevant to the role (${config.role}) and mode (${config.mode}).
+2. If this is the start (turn 0), introduce a challenge or question directly relevant to the role (${config.role}) and heavily incorporating their specific skills (${config.detectedSkills?.join(', ')}). Even if it is a Behavioral interview, you MUST ask questions that are highly technical and related to their skills and role (e.g. "Tell me about a time you optimized a complex React application...").
 3. For follow-ups: ALWAYS directly evaluate and reference the candidate's previous response, their architectural choices, or code in the editor.
 4. Probe deeply into time/space complexity, race conditions, edge cases, scalability, or alternative trade-offs.
 5. Keep your response conversational, concise (2-4 sentences max), sharp, and engaging as a realistic interviewer. Do NOT generate answers for the candidate.`;
@@ -39,139 +72,8 @@ Instructions:
     .map((t) => `${t.role === 'agent' ? 'Interviewer' : 'Candidate'}: ${t.text}${t.codeSnapshot ? `\n[Candidate Code in Editor]:\n${t.codeSnapshot}` : ''}`)
     .join('\n\n');
 
-  // 1. Try Google Gemini API
-  if (GEMINI_API_KEY) {
-    try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-      const geminiRes = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemPrompt}\n\nInterview Transcript so far:\n${conversationHistory || 'Interview just started.'}\n\nGenerate the next interviewer response:` }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 300,
-          },
-        }),
-      });
-      if (geminiRes.ok) {
-        const data = await geminiRes.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text.trim();
-      }
-    } catch (e) {
-      console.warn('Gemini question generation error:', e);
-    }
-  }
-
-  // 2. Try Groq API (ultra-fast, free tier)
-  if (GROQ_API_KEY) {
-    try {
-      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...transcript.map((t) => ({
-              role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
-              content: `${t.text}${t.codeSnapshot ? `\n[Code Snapshot]:\n${t.codeSnapshot}` : ''}`,
-            })),
-            ...(transcript.length === 0
-              ? [{ role: 'user' as const, content: `Begin the interview with an initial problem for ${config.role} (${config.mode}).` }]
-              : []),
-          ],
-          max_tokens: 300,
-          temperature: 0.7,
-        }),
-      });
-      if (groqRes.ok) {
-        const data = await groqRes.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) return text.trim();
-      }
-    } catch (e) {
-      console.warn('Groq question generation error:', e);
-    }
-  }
-
-  // 3. Try OpenAI API
-  if (OPENAI_API_KEY) {
-    try {
-      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...transcript.map((t) => ({
-              role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
-              content: `${t.text}${t.codeSnapshot ? `\n[Code Snapshot]:\n${t.codeSnapshot}` : ''}`,
-            })),
-            ...(transcript.length === 0
-              ? [{ role: 'user' as const, content: `Begin the interview with an initial problem for ${config.role} (${config.mode}).` }]
-              : []),
-          ],
-          max_tokens: 300,
-          temperature: 0.7,
-        }),
-      });
-      if (openaiRes.ok) {
-        const data = await openaiRes.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (text) return text.trim();
-      }
-    } catch (e) {
-      console.warn('OpenAI question generation error:', e);
-    }
-  }
-
-  // 4. Try Anthropic API
-  if (ANTHROPIC_API_KEY) {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 400,
-          system: systemPrompt,
-          messages: [
-            ...transcript.map((t) => ({
-              role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
-              content: `${t.text}${t.codeSnapshot ? `\n[Code Snapshot]:\n${t.codeSnapshot}` : ''}`,
-            })),
-            ...(transcript.length === 0
-              ? [{ role: 'user' as const, content: `Begin the interview with an initial question for ${config.role} (${config.mode}).` }]
-              : []),
-          ],
-        }),
-      });
-      const data = (await response.json()) as { content?: { text?: string }[] };
-      if (data.content?.[0]?.text) {
-        return data.content[0].text.trim();
-      }
-    } catch (e) {
-      console.warn('Claude API call failed, falling back to smart simulation:', e);
-    }
-  }
+  const responseText = await callLLM(systemPrompt, conversationHistory || 'Interview just started.\nGenerate the next interviewer response:');
+  if (responseText) return responseText;
 
   // 5. Intelligent Role-Aware & Candidate-Aware Contextual Engine
   return generateContextualAdaptiveQuestion(config, transcript, turnIndex, lastCandidateTurn);
@@ -335,42 +237,52 @@ export async function analyzeResumeContent(
   fileName: string,
   rawText: string
 ): Promise<ResumeFeedback> {
+  const prompt = `You are an ATS parser and technical recruiter. Analyze the following resume:
+Filename: ${fileName}
+Content:
+${rawText}
+
+Return a detailed JSON response (do not include markdown wrapping) with exactly this structure:
+{
+  "summary": "2-3 sentences summarizing the candidate's profile",
+  "sections": [
+    { "name": "Experience & Impact", "score": 85, "feedback": "..." },
+    { "name": "Technical Skills & Tools", "score": 92, "feedback": "..." },
+    { "name": "Education & Certifications", "score": 88, "feedback": "..." }
+  ],
+  "bulletSuggestions": [
+    {
+      "original": "Worked on database queries...",
+      "suggested": "Optimized PostgreSQL queries...",
+      "impactReason": "Quantifies concrete performance..."
+    }
+  ],
+  "detectedSkills": ["React", "Node.js", "System Design"]
+}`;
+
+  const response = await callLLM(prompt, "Please analyze the resume and return the JSON object.");
+  
+  if (response) {
+    try {
+      const parsed = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (parsed.sections) return parsed;
+    } catch (e) {
+      console.warn("Failed to parse resume analysis JSON:", response);
+    }
+  }
+
+  // Fallback mock response
   return {
-    summary: `Resume demonstrates strong full-stack and distributed systems experience with modern architectural practices. Highlight scale metrics (RPS, throughput, DAU) to maximize ATS impact.`,
+    summary: `Resume demonstrates strong full-stack and distributed systems experience with modern architectural practices.`,
+    detectedSkills: ["TypeScript", "Next.js", "Node.js", "Docker", "REST APIs"],
     sections: [
       {
         name: 'Experience & Impact',
         score: 85,
         feedback: 'Strong action verbs. Highlight user volume and throughput metrics where possible.',
-      },
-      {
-        name: 'Technical Skills & Tools',
-        score: 92,
-        feedback: 'Modern keywords (TypeScript, Next.js, Docker, Cloud Services). Group by domain for improved parsing.',
-      },
-      {
-        name: 'Education & Certifications',
-        score: 88,
-        feedback: 'Clear credentials and degree timeline.',
-      },
-      {
-        name: 'Projects & Portfolio',
-        score: 82,
-        feedback: 'GitHub portfolio links are included. Clarify individual ownership vs. team contributions.',
-      },
+      }
     ],
-    bulletSuggestions: [
-      {
-        original: 'Worked on database queries and improved performance for customer dashboard.',
-        suggested: 'Optimized PostgreSQL queries and added composite indexes, reducing p95 dashboard load time from 2.4s to 320ms for 50K+ daily active users.',
-        impactReason: 'Quantifies concrete performance gain and production scale rather than vague effort.',
-      },
-      {
-        original: 'Built REST APIs for user authentication and role-based permissions.',
-        suggested: 'Architected and deployed OAuth2/JWT authentication microservice with RBAC, securing 12 internal and public-facing microservices.',
-        impactReason: 'Demonstrates architectural scope and security protocol familiarity.',
-      },
-    ],
+    bulletSuggestions: []
   };
 }
 
@@ -467,25 +379,45 @@ export async function generateLearningRoadmap(
   weakAreas: string[],
   sourceType: 'interview' | 'repo_analysis'
 ): Promise<RoadmapStep[]> {
-  const steps: RoadmapStep[] = [];
+  const prompt = `You are a Senior Engineering Manager creating a learning roadmap for a developer to address these weak areas:
+${weakAreas.join(', ')}
 
+Return a JSON array of roadmap steps (do not include markdown wrapping). Each step must have this structure:
+{
+  "id": "step-1",
+  "topic": "Name of the topic",
+  "description": "2-3 sentences explaining what to study",
+  "estimatedTime": "X days",
+  "completed": false,
+  "source": "${sourceType}",
+  "resourceLinks": [
+    { "title": "Resource title", "url": "https://example.com" }
+  ]
+}`;
+
+  const response = await callLLM(prompt, "Please generate the roadmap steps.");
+  
+  if (response) {
+    try {
+      const parsed = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (e) {
+      console.warn("Failed to parse roadmap JSON:", response);
+    }
+  }
+
+  // Fallback mock
+  const steps: RoadmapStep[] = [];
   weakAreas.forEach((area, index) => {
     steps.push({
       id: `step-${Date.now()}-${index}`,
       topic: area,
-      description: `Master key concepts and best practices regarding ${area.toLowerCase()}. Implement hands-on exercises and review production post-mortems.`,
+      description: `Master key concepts and best practices regarding ${area.toLowerCase()}.`,
       estimatedTime: `${2 + index} days`,
       completed: false,
       source: sourceType,
       resourceLinks: [
-        {
-          title: `${area} Architecture Deep-Dive`,
-          url: 'https://github.com/donnemartin/system-design-primer',
-        },
-        {
-          title: `Testing & Reliability Best Practices`,
-          url: 'https://martinfowler.com/articles/practical-test-pyramid.html',
-        },
+        { title: `${area} Architecture Deep-Dive`, url: 'https://github.com/donnemartin/system-design-primer' }
       ],
     });
   });
