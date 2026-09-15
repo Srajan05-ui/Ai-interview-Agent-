@@ -1,4 +1,4 @@
-# AI Interview Agent (Full-Stack)
+# Paradox : The AI Interview Assistant
 
 AI-driven technical mock interview platform combining:
 - **Adaptive AI Interviews**: Real-time voice/text questions & responses with anti-cheat detection and live code editor (`CodeEditorPanel.tsx`).

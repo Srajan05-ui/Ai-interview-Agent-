@@ -34,12 +34,17 @@ export default function Navbar() {
             </div>
           </div>
           <div>
-            <span className="font-bold text-lg bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-              Interview<span className="text-indigo-400">Agent</span>
-            </span>
-            <span className="text-[10px] ml-1.5 px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-              AI v2.0
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-lg bg-gradient-to-r from-white via-indigo-200 to-sky-400 bg-clip-text text-transparent tracking-tight">
+                Paradox
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
+                AI Assistant
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-400 font-medium tracking-tight -mt-0.5 hidden sm:block">
+              The AI Interview Assistant
+            </div>
           </div>
         </Link>
 

@@ -127,7 +127,7 @@ export default function DashboardPage() {
           <div className="absolute top-0 right-1/4 -mt-16 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="relative z-10 max-w-3xl mx-auto space-y-6">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold">
-              <Sparkles className="w-4 h-4 text-indigo-400" /> AI-Powered Technical Interview Platform
+              <Sparkles className="w-4 h-4 text-indigo-400" /> Paradox : The AI Interview Assistant
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-tight">

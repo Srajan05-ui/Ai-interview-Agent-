@@ -4,7 +4,7 @@ import Navbar from '@/components/Navbar';
 import Providers from '@/components/Providers';
 
 export const metadata: Metadata = {
-  title: 'AI Interview Agent — Technical Mock Interviews, Code & Repo Analysis',
+  title: 'Paradox : The AI Interview Assistant',
   description: 'Master technical interviews with adaptive AI sessions, live coding evaluations, ATS resume scoring, and GitHub repository analysis.',
 };
 
