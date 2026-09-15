@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Sparkles, Terminal, FileText, GitBranch, Map, User as UserIcon, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import AuthModal from '@/components/AuthModal';
 
 export default function Navbar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [mounted, setMounted] = useState(false);
+  const [authModalFeature, setAuthModalFeature] = useState<{ title: string; href: string } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -23,52 +25,62 @@ export default function Navbar() {
     { name: 'Roadmap', href: '/roadmap', icon: Map },
   ];
 
-  return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand */}
-        <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
-            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Terminal className="w-5 h-5 text-indigo-400" />
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-lg bg-gradient-to-r from-white via-indigo-200 to-sky-400 bg-clip-text text-transparent tracking-tight">
-                Paradox
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
-                AI Assistant
-              </span>
-            </div>
-            <div className="text-[10px] text-slate-400 font-medium tracking-tight -mt-0.5 hidden sm:block">
-              The AI Interview Assistant
-            </div>
-          </div>
-        </Link>
+  const handleNavClick = (e: React.MouseEvent, item: typeof navItems[0]) => {
+    if (item.href !== '/' && !user) {
+      e.preventDefault();
+      setAuthModalFeature({ title: item.name, href: item.href });
+    }
+  };
 
-        {/* Navigation */}
-        <nav className="hidden md:flex items-center gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-400' : 'text-slate-400'}`} />
-                {item.name}
-              </Link>
-            );
-          })}
-        </nav>
+  return (
+    <>
+      <AuthModal feature={authModalFeature} onClose={() => setAuthModalFeature(null)} />
+      <header className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          {/* Brand */}
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
+              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+                <Terminal className="w-5 h-5 text-indigo-400" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-lg bg-gradient-to-r from-white via-indigo-200 to-sky-400 bg-clip-text text-transparent tracking-tight">
+                  Paradox
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
+                  AI Assistant
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium tracking-tight -mt-0.5 hidden sm:block">
+                The AI Interview Assistant
+              </div>
+            </div>
+          </Link>
+
+          {/* Navigation */}
+          <nav className="hidden md:flex items-center gap-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  onClick={(e) => handleNavClick(e, item)}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-400' : 'text-slate-400'}`} />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </nav>
 
         {/* User Profile / Auth Area */}
         <div className="flex items-center gap-3">
@@ -118,5 +130,6 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+    </>
   );
 }
