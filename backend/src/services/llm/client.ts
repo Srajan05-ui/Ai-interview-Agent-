@@ -11,13 +11,135 @@ import {
 import { StaticSignals } from '../github/analyzer.js';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 export async function generateAdaptiveQuestion(
   config: InterviewConfig,
   transcript: InterviewTurn[]
 ): Promise<string> {
-  const turnCount = transcript.filter((t) => t.role === 'agent').length;
+  const agentTurns = transcript.filter((t) => t.role === 'agent');
+  const candidateTurns = transcript.filter((t) => t.role === 'candidate');
+  const turnIndex = agentTurns.length;
+  const lastCandidateTurn = candidateTurns[candidateTurns.length - 1];
 
+  const systemPrompt = `You are a world-class technical interviewer conducting a rigorous, highly adaptive ${config.companyStyle} interview for a ${config.experienceLevel} ${config.role}.
+Interview Mode: ${config.mode}. Spoken Language: ${config.language}.
+${config.attachedRepoUrl ? `Attached Candidate Portfolio Repository: ${config.attachedRepoUrl}` : ''}
+
+Instructions:
+1. Generate the NEXT question or technical follow-up.
+2. If this is the start (turn 0), introduce the technical challenge directly relevant to the role (${config.role}) and mode (${config.mode}).
+3. For follow-ups: ALWAYS directly evaluate and reference the candidate's previous response, their architectural choices, or code in the editor.
+4. Probe deeply into time/space complexity, race conditions, edge cases, scalability, or alternative trade-offs.
+5. Keep your response conversational, concise (2-4 sentences max), sharp, and engaging as a realistic interviewer. Do NOT generate answers for the candidate.`;
+
+  const conversationHistory = transcript
+    .map((t) => `${t.role === 'agent' ? 'Interviewer' : 'Candidate'}: ${t.text}${t.codeSnapshot ? `\n[Candidate Code in Editor]:\n${t.codeSnapshot}` : ''}`)
+    .join('\n\n');
+
+  // 1. Try Google Gemini API
+  if (GEMINI_API_KEY) {
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${systemPrompt}\n\nInterview Transcript so far:\n${conversationHistory || 'Interview just started.'}\n\nGenerate the next interviewer response:` }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 300,
+          },
+        }),
+      });
+      if (geminiRes.ok) {
+        const data = await geminiRes.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text.trim();
+      }
+    } catch (e) {
+      console.warn('Gemini question generation error:', e);
+    }
+  }
+
+  // 2. Try Groq API (ultra-fast, free tier)
+  if (GROQ_API_KEY) {
+    try {
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...transcript.map((t) => ({
+              role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
+              content: `${t.text}${t.codeSnapshot ? `\n[Code Snapshot]:\n${t.codeSnapshot}` : ''}`,
+            })),
+            ...(transcript.length === 0
+              ? [{ role: 'user' as const, content: `Begin the interview with an initial problem for ${config.role} (${config.mode}).` }]
+              : []),
+          ],
+          max_tokens: 300,
+          temperature: 0.7,
+        }),
+      });
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        const text = data?.choices?.[0]?.message?.content;
+        if (text) return text.trim();
+      }
+    } catch (e) {
+      console.warn('Groq question generation error:', e);
+    }
+  }
+
+  // 3. Try OpenAI API
+  if (OPENAI_API_KEY) {
+    try {
+      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...transcript.map((t) => ({
+              role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
+              content: `${t.text}${t.codeSnapshot ? `\n[Code Snapshot]:\n${t.codeSnapshot}` : ''}`,
+            })),
+            ...(transcript.length === 0
+              ? [{ role: 'user' as const, content: `Begin the interview with an initial problem for ${config.role} (${config.mode}).` }]
+              : []),
+          ],
+          max_tokens: 300,
+          temperature: 0.7,
+        }),
+      });
+      if (openaiRes.ok) {
+        const data = await openaiRes.json();
+        const text = data?.choices?.[0]?.message?.content;
+        if (text) return text.trim();
+      }
+    } catch (e) {
+      console.warn('OpenAI question generation error:', e);
+    }
+  }
+
+  // 4. Try Anthropic API
   if (ANTHROPIC_API_KEY) {
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -29,59 +151,116 @@ export async function generateAdaptiveQuestion(
         },
         body: JSON.stringify({
           model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 600,
+          max_tokens: 400,
+          system: systemPrompt,
           messages: [
-            {
-              role: 'user',
-              content: `You are an expert technical interviewer conducting a ${config.companyStyle} interview for a ${config.experienceLevel} ${config.role}. Mode: ${config.mode}.
-Current transcript:
-${transcript.map((t) => `${t.role}: ${t.text} ${t.codeSnapshot ? `\nCode:\n${t.codeSnapshot}` : ''}`).join('\n')}
-
-Generate the next thoughtful, adaptive follow-up or probing question based on the candidate's last answer.`,
-            },
+            ...transcript.map((t) => ({
+              role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
+              content: `${t.text}${t.codeSnapshot ? `\n[Code Snapshot]:\n${t.codeSnapshot}` : ''}`,
+            })),
+            ...(transcript.length === 0
+              ? [{ role: 'user' as const, content: `Begin the interview with an initial question for ${config.role} (${config.mode}).` }]
+              : []),
           ],
         }),
       });
       const data = (await response.json()) as { content?: { text?: string }[] };
       if (data.content?.[0]?.text) {
-        return data.content[0].text;
+        return data.content[0].text.trim();
       }
     } catch (e) {
-      console.error('Claude API call failed, falling back to smart simulation:', e);
+      console.warn('Claude API call failed, falling back to smart simulation:', e);
     }
   }
 
-  // Realistic adaptive simulation
-  if (config.mode === 'Live Coding') {
-    if (turnCount === 0) {
-      return `Welcome! For today's live coding session targeting ${config.role}, let's implement an LRU Cache with O(1) get and put operations in your language of choice. How would you plan your data structures before typing code?`;
-    } else if (turnCount === 1) {
-      return `Great design choice with the Doubly Linked List and Hash Map. Go ahead and write out the core class and Node definitions in the editor panel. Be sure to handle edge cases like evicting the least recently used element when capacity is reached.`;
-    } else if (turnCount === 2) {
-      return `I see your implementation in the editor. What is the time and space complexity of your 'put' operation when the cache is already at capacity? How would this behave in a multi-threaded or concurrent environment?`;
-    } else {
-      return `Excellent walkthrough. Could you optimize your eviction logic, or write a couple of unit tests in the editor to verify duplicate keys?`;
+  // 5. Intelligent Role-Aware & Candidate-Aware Contextual Engine
+  return generateContextualAdaptiveQuestion(config, transcript, turnIndex, lastCandidateTurn);
+}
+
+function generateContextualAdaptiveQuestion(
+  config: InterviewConfig,
+  transcript: InterviewTurn[],
+  turnIndex: number,
+  lastTurn?: InterviewTurn
+): string {
+  const roleLower = (config.role || '').toLowerCase();
+  const isFrontend = roleLower.includes('front') || roleLower.includes('ui') || roleLower.includes('react') || roleLower.includes('web');
+  const isBackend = roleLower.includes('back') || roleLower.includes('node') || roleLower.includes('python') || roleLower.includes('go') || roleLower.includes('system') || roleLower.includes('api');
+  const isML = roleLower.includes('ml') || roleLower.includes('machine') || roleLower.includes('data') || roleLower.includes('ai');
+  const isDevOps = roleLower.includes('devops') || roleLower.includes('sre') || roleLower.includes('cloud') || roleLower.includes('infrastructure');
+
+  // Turn 0: Tailored Initial Questions based on Mode and Role
+  if (turnIndex === 0) {
+    if (config.mode === 'Behavioral') {
+      return `Welcome to your ${config.companyStyle} interview! To start, tell me about a technically complex project you owned where the initial requirements were ambiguous or changing rapidly. What was your personal contribution, and how did you ensure successful delivery?`;
     }
-  } else if (config.mode === 'Behavioral') {
-    if (turnCount === 0) {
-      return `Hello! Let's start by hearing about a challenging technical project you led or contributed to significantly. What was your specific ownership, and what major hurdle did you overcome?`;
-    } else if (turnCount === 1) {
-      return `When facing that roadblock with your team, how did you resolve disagreements regarding the architecture or timeline?`;
-    } else {
-      return `If you had to start that project again with what you know now, what would you do differently regarding system reliability and stakeholder communication?`;
+
+    if (config.mode === 'Conceptual / System Design') {
+      if (isFrontend) {
+        return `Welcome to your ${config.companyStyle} Frontend Architecture interview! Let's design a high-performance, real-time Collaborative Rich-Text Document Editor (like Google Docs or Notion). How would you architect the client-side state management, operational transformation or CRDT synchronization, and offline cache layer?`;
+      }
+      if (isML) {
+        return `Welcome to your ${config.companyStyle} Machine Learning Systems interview! How would you design an end-to-end Real-Time Semantic Search & Recommendation Engine serving 50,000 queries per second with sub-50ms p99 latency? Walk me through data ingestion, embedding generation, vector indexing, and online inference.`;
+      }
+      if (isDevOps) {
+        return `Welcome to your ${config.companyStyle} Infrastructure interview! Let's design a Multi-Region, Active-Active Kubernetes deployment for an e-commerce platform with zero-downtime database failover and automated canary deployments. How would you structure the traffic routing and data consistency layers?`;
+      }
+      // Backend / Full Stack default
+      return `Welcome to your ${config.companyStyle} System Design interview for ${config.role}! Let's design a Globally Distributed Rate Limiter and API Gateway capable of handling 500,000 requests per second across multiple data centers. How would you design the storage layer, eviction algorithms, and inter-datacenter synchronization?`;
     }
-  } else {
-    // Technical Q&A
-    if (turnCount === 0) {
-      return `Welcome to your ${config.role} technical interview (${config.companyStyle}). To begin, could you explain how you design for high availability and zero-downtime database migrations in a distributed microservices environment?`;
-    } else if (turnCount === 1) {
-      return `You mentioned using feature flags and dual-writing. How do you handle data inconsistency or split-brain states between the legacy schema and the new database schema during the transition window?`;
-    } else if (turnCount === 2) {
-      return `Good catch on reconciliation workers. How would you design the observability and alerting pipeline so your on-call team detects latency spikes before users are impacted?`;
-    } else {
-      return `Let's dive into API design. When designing idempotent endpoints for payment processing or critical mutations, how do you handle idempotency keys across distributed nodes?`;
+
+    // Live Coding Mode:
+    if (isFrontend) {
+      return `Welcome to your live technical session! Today we'll implement a custom Reactive Event Bus and Async Debounce/Throttle utility with trailing and leading execution support in TypeScript. Before jumping into code, walk me through how you plan to handle cancel tokens, argument forwarding, and memory leak prevention.`;
     }
+    if (isML) {
+      return `Welcome! For today's live coding session targeting ${config.role}, let's implement an efficient Vector Cosine Similarity and K-Nearest Neighbors search over high-dimensional embeddings with early-stopping optimizations. How would you structure your data structures and vector operations?`;
+    }
+    if (isDevOps) {
+      return `Welcome! For today's technical coding challenge, let's write a robust Log Aggregator and Stream Anomaly Detector that processes streaming server metrics and flags sudden error spikes using a sliding window. How would you design the sliding window state to avoid memory bloat?`;
+    }
+    if (isBackend) {
+      return `Welcome to your live coding session (${config.companyStyle})! Let's implement a Token Bucket Rate Limiter with burst capacity and thread-safe refilling in your language of choice. How would you represent bucket state and calculate token replenishment without spinning locks?`;
+    }
+    // Full Stack default
+    return `Welcome to your live coding session targeting ${config.role} (${config.companyStyle})! Let's implement an In-Memory Key-Value Store supporting TTL (Time-To-Live) expiration, O(1) lookups, and least-recently-used eviction. How would you approach the data structures before writing code?`;
   }
+
+  // Follow-up Turns (1, 2, 3+): Dynamically react to what candidate said & coded
+  const candidateText = lastTurn?.text?.trim() || '';
+  const candidateCode = lastTurn?.codeSnapshot?.trim() || '';
+
+  // Check what the candidate discussed
+  const mentionsComplexity = candidateText.toLowerCase().includes('o(1)') || candidateText.toLowerCase().includes('o(n)') || candidateText.toLowerCase().includes('complexity');
+  const mentionsConcurrency = candidateText.toLowerCase().includes('thread') || candidateText.toLowerCase().includes('lock') || candidateText.toLowerCase().includes('race') || candidateText.toLowerCase().includes('mutex') || candidateText.toLowerCase().includes('concurrent');
+  const mentionsMemory = candidateText.toLowerCase().includes('memory') || candidateText.toLowerCase().includes('leak') || candidateText.toLowerCase().includes('gc') || candidateText.toLowerCase().includes('evict');
+  const hasCode = candidateCode.length > 50;
+
+  if (turnIndex === 1) {
+    if (hasCode) {
+      return `I see the implementation taking shape in your editor. Looking at your data structure definitions, what happens when the capacity is exceeded during simultaneous write operations? Walk me through the step-by-step eviction flow.`;
+    }
+    if (mentionsComplexity) {
+      return `Good observation on time complexity. Now go ahead and write the core algorithm in the code editor panel. Be sure to handle boundary edge cases like empty inputs, duplicate keys, and invalid capacities.`;
+    }
+    return `That makes sense conceptually. Please start drafting the core implementation in the editor panel. How will your method signatures and internal state variables be structured?`;
+  }
+
+  if (turnIndex === 2) {
+    if (hasCode) {
+      return `Looking at the code you wrote in the editor: what is the worst-case space complexity if 100,000 distinct items are processed rapidly? Could any unbounded data structures cause high garbage collection pauses or memory leaks?`;
+    }
+    if (mentionsConcurrency) {
+      return `You pointed out concurrency trade-offs. How would you test this implementation against subtle race conditions? What specific unit or integration test cases would you write in the editor right now to prove correctness?`;
+    }
+    return `How would this design adapt if requirements shifted from single-node execution to a distributed cluster? What synchronization or serialization overhead would emerge?`;
+  }
+
+  if (turnIndex === 3) {
+    return `Excellent breakdown. Let's do a quick code walk-through: how would you optimize this for low-latency production environments? Are there any profiling tools or telemetry metrics you would attach to monitor this in production?`;
+  }
+
+  return `Great answers throughout this session. Is there any aspect of the implementation, failure modes, or edge-case handling you would refactor before pushing this to production?`;
 }
 
 export async function gradeInterview(

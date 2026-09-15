@@ -37,11 +37,23 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     db.interviews.set(interviewId, interview);
-    res.json({ interviewId, initialQuestion });
+    res.json({ interviewId, initialQuestion, config: interview.config, transcript: interview.transcript });
   } catch (error) {
     console.error('Create interview error:', error);
     res.status(500).json({ error: { code: 'INTERVIEW_CREATE_FAILED', message: 'Could not initialize interview session' } });
   }
+});
+
+// GET /api/interview/:id - Retrieve interview session, config & transcript
+router.get('/:id', (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const interview = db.interviews.get(id);
+
+  if (!interview) {
+    return res.status(404).json({ error: { code: 'INTERVIEW_NOT_FOUND', message: 'Interview session not found' } });
+  }
+
+  res.json({ interview });
 });
 
 // POST /api/interview/:id/answer - Submit answer, get follow-up

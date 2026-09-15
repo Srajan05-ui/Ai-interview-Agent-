@@ -4,22 +4,113 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Send, Mic, MicOff, Volume2, VolumeX, ShieldAlert, CheckCircle, Terminal, User } from 'lucide-react';
 import CodeEditorPanel from '@/components/CodeEditorPanel';
-import { InterviewTurn, AntiCheatFlag } from '@/types';
+import { Interview, InterviewConfig, InterviewTurn, AntiCheatFlag } from '@/types';
 import { safeFetchJson } from '@/lib/api';
+
+function getStarterCode(config: InterviewConfig | null): string | undefined {
+  if (!config) return undefined;
+  const role = (config.role || '').toLowerCase();
+  const isFrontend = role.includes('front') || role.includes('ui') || role.includes('react');
+  const isBackend = role.includes('back') || role.includes('node') || role.includes('api') || role.includes('system');
+  const isML = role.includes('ml') || role.includes('data') || role.includes('machine') || role.includes('ai');
+
+  if (isFrontend) {
+    return `// Frontend Technical Challenge: Custom EventEmitter & Debounce
+export class EventEmitter {
+  private events: Map<string, Function[]> = new Map();
+
+  on(event: string, listener: Function): () => void {
+    const list = this.events.get(event) || [];
+    list.push(listener);
+    this.events.set(event, list);
+    return () => {
+      const idx = list.indexOf(listener);
+      if (idx !== -1) list.splice(idx, 1);
+    };
+  }
+
+  emit(event: string, ...args: any[]): void {
+    const list = this.events.get(event) || [];
+    list.forEach((fn) => fn(...args));
+  }
+}
+
+export function debounce<T extends (...args: any[]) => any>(
+  fn: T,
+  delayMs: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), delayMs);
+  };
+}
+`;
+  }
+
+  if (isBackend) {
+    return `// Backend Technical Challenge: Token Bucket Rate Limiter
+export class TokenBucketRateLimiter {
+  private capacity: number;
+  private refillRatePerSecond: number;
+  private currentTokens: number;
+  private lastRefillTimestamp: number;
+
+  constructor(capacity: number, refillRatePerSecond: number) {
+    this.capacity = capacity;
+    this.refillRatePerSecond = refillRatePerSecond;
+    this.currentTokens = capacity;
+    this.lastRefillTimestamp = Date.now();
+  }
+
+  tryConsume(tokensRequired: number = 1): boolean {
+    const now = Date.now();
+    const elapsedSeconds = (now - this.lastRefillTimestamp) / 1000;
+    this.currentTokens = Math.min(
+      this.capacity,
+      this.currentTokens + elapsedSeconds * this.refillRatePerSecond
+    );
+    this.lastRefillTimestamp = now;
+
+    if (this.currentTokens >= tokensRequired) {
+      this.currentTokens -= tokensRequired;
+      return true;
+    }
+    return false;
+  }
+}
+`;
+  }
+
+  if (isML) {
+    return `// ML Engineering Challenge: Vector Cosine Similarity & Top-K Search
+export function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  if (vecA.length !== vecB.length || vecA.length === 0) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+  return denominator === 0 ? 0 : dotProduct / denominator;
+}
+`;
+  }
+
+  return undefined;
+}
 
 function InterviewSessionContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const interviewId = searchParams.get('id') || 'interview-demo';
 
-  const [transcript, setTranscript] = useState<InterviewTurn[]>([
-    {
-      id: 'turn-1',
-      role: 'agent',
-      text: "Welcome to your live technical session! Today we'll implement an LRU Cache with O(1) time complexity for get and put. Could you explain your initial design approach and data structure choices before typing code?",
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const [config, setConfig] = useState<InterviewConfig | null>(null);
+  const [transcript, setTranscript] = useState<InterviewTurn[]>([]);
+  const [loadingSession, setLoadingSession] = useState(true);
 
   const [inputText, setInputText] = useState('');
   const [currentCode, setCurrentCode] = useState('');
@@ -31,6 +122,40 @@ function InterviewSessionContent() {
   const [lastFlagNotice, setLastFlagNotice] = useState<string | null>(null);
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  // Load real session from backend
+  useEffect(() => {
+    async function loadSession() {
+      if (!interviewId) return;
+      try {
+        const res = await safeFetchJson<{ interview?: Interview }>(`/api/interview/${interviewId}`);
+        if (res.ok && res.data?.interview) {
+          const fetched = res.data.interview;
+          if (fetched.transcript && fetched.transcript.length > 0) {
+            setTranscript(fetched.transcript);
+          }
+          if (fetched.config) {
+            setConfig(fetched.config);
+          }
+        } else {
+          // Fallback if demo
+          setTranscript([
+            {
+              id: 'turn-1',
+              role: 'agent',
+              text: "Welcome to your live technical session! Today we'll implement an in-memory key-value store with TTL expiration and O(1) lookups. Could you explain your initial design approach before typing code?",
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+      } catch (e) {
+        console.error('Failed loading interview session:', e);
+      } finally {
+        setLoadingSession(false);
+      }
+    }
+    loadSession();
+  }, [interviewId]);
 
   // Auto scroll transcript
   useEffect(() => {
@@ -185,7 +310,9 @@ function InterviewSessionContent() {
             <span className="text-xs font-bold text-white tracking-wide uppercase">Live Session Active</span>
           </div>
           <span className="text-xs text-slate-500 hidden sm:inline">|</span>
-          <span className="text-xs text-slate-400 hidden sm:inline">Google-Style · Senior SWE</span>
+          <span className="text-xs text-slate-400 hidden sm:inline">
+            {config ? `${config.companyStyle} · ${config.experienceLevel} ${config.role} (${config.mode})` : 'Technical Interview Session'}
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -323,6 +450,8 @@ function InterviewSessionContent() {
         {/* Right Column: In-browser Live Code Editor */}
         <div className="h-full">
           <CodeEditorPanel
+            key={config ? `${config.role}-${config.mode}` : 'default-editor'}
+            initialCode={getStarterCode(config)}
             onChange={(code) => setCurrentCode(code)}
             onRun={(code, lang) => {
               setCurrentCode(code);
