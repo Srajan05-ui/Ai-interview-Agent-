@@ -14,7 +14,13 @@ export async function safeFetchJson<T = any>(
   init?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const res = await fetch(input, init);
+    let url = input;
+    if (typeof url === 'string' && url.startsWith('/api')) {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      url = `${backendUrl}${url}`;
+    }
+
+    const res = await fetch(url, init);
     const text = await res.text();
 
     let parsedData: any = null;
