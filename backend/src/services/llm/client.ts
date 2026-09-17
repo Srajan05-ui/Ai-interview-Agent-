@@ -171,49 +171,89 @@ export async function gradeInterview(
   transcript: InterviewTurn[],
   antiCheatFlags: AntiCheatFlag[]
 ): Promise<Scorecard> {
-  const totalTurns = transcript.length;
   const tabSwitches = antiCheatFlags.filter((f) => f.type === 'tab_switch').length;
 
-  let overallScore = 84;
-  if (tabSwitches > 3) overallScore -= 8;
-  if (totalTurns < 4) overallScore = Math.min(overallScore, 68);
+  const conversation = transcript
+    .map(t => `${t.role.toUpperCase()}: ${t.text}${t.codeSnapshot ? `\n[CODE]:\n${t.codeSnapshot}` : ''}`)
+    .join('\n\n');
 
-  const rubricScores: Record<string, number> = {
-    'Problem Solving': Math.min(95, Math.max(65, 82 + (totalTurns > 3 ? 6 : 0))),
-    'Technical Accuracy': 86,
-    'Communication & Clarity': 88,
-    'System Design / Architecture': 79,
-    'Code Quality & Best Practices': config.mode === 'Live Coding' ? 83 : 80,
-  };
+  const prompt = `You are an expert technical interviewer evaluating a candidate for a ${config.experienceLevel} ${config.role} position.
+Review the following interview transcript:
+---
+${conversation}
+---
+The candidate switched browser tabs ${tabSwitches} times during the interview (which could indicate cheating if excessive).
 
-  const strongAreas = [
-    'Clear architectural decomposition and component isolation',
-    'Solid grasp of Big-O complexity and memory trade-offs',
-    'Effective verbalization of assumptions before implementing',
-  ];
+Based STRICTLY on the candidate's answers and code, evaluate their performance. If the candidate provided very short, irrelevant, or no answers, their scores MUST be extremely low (0-20) and the feedback should state they did not participate or did not answer the questions. Do NOT give fake positive scores. Be genuine and harsh if needed.
 
-  const weakAreas = [
-    'Deep concurrency / distributed consensus trade-offs',
-    'Defensive error handling and edge-case testing coverage',
-  ];
-
-  const citedFeedback: CitedFeedback[] = [
+Return a JSON object (do not include markdown wrapping like \`\`\`json) with exactly this structure:
+{
+  "overallScore": 68,
+  "rubricScores": {
+    "Problem Solving": 82,
+    "Technical Accuracy": 86,
+    "Communication & Clarity": 88,
+    "System Design / Architecture": 79,
+    "Code Quality & Best Practices": 80
+  },
+  "strongAreas": ["Clear architectural decomposition", "Solid grasp of Big-O complexity"],
+  "weakAreas": ["Defensive error handling", "Testing coverage"],
+  "citedFeedback": [
     {
-      topic: 'Data Structure Choice',
-      severity: 'positive',
-      text: 'Articulated O(1) hash map + doubly linked list trade-offs proactively before writing code.',
-      transcriptTurnRef: transcript[1]?.id || 'turn-1',
-    },
-    {
-      topic: 'Edge Case Handling',
-      severity: 'needs_work',
-      text: 'Eviction boundary test missed handling cache capacity of 0 or duplicate key updates.',
-      transcriptTurnRef: transcript[transcript.length - 1]?.id || 'turn-3',
-    },
-  ];
+      "topic": "Edge Case Handling",
+      "severity": "needs_work",
+      "text": "Eviction boundary test missed handling cache capacity of 0.",
+      "transcriptTurnRef": "turn-3"
+    }
+  ]
+}`;
 
+  let scorecard: Scorecard | null = null;
+  const response = await callLLM(prompt, "Please evaluate the candidate and return the JSON object.");
+  
+  if (response) {
+    try {
+      const parsed = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (parsed && typeof parsed.overallScore === 'number') {
+        scorecard = {
+          id: `scorecard-${Date.now()}`,
+          interviewId,
+          overallScore: parsed.overallScore,
+          rubricScores: parsed.rubricScores,
+          strongAreas: parsed.strongAreas,
+          weakAreas: parsed.weakAreas,
+          citedFeedback: parsed.citedFeedback,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    } catch (e) {
+      console.warn("Failed to parse scorecard JSON:", response);
+    }
+  }
+
+  // Fallback if LLM fails
+  if (!scorecard) {
+    scorecard = {
+      id: `scorecard-${Date.now()}`,
+      interviewId,
+      overallScore: 0,
+      rubricScores: {
+        'Problem Solving': 0,
+        'Technical Accuracy': 0,
+        'Communication & Clarity': 0,
+        'System Design / Architecture': 0,
+        'Code Quality & Best Practices': 0,
+      },
+      strongAreas: [],
+      weakAreas: ['Failed to generate evaluation from LLM.'],
+      citedFeedback: [],
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  // Inject anti-cheat feedback if applicable
   if (tabSwitches > 0) {
-    citedFeedback.push({
+    scorecard.citedFeedback.push({
       topic: 'Interview Environment',
       severity: 'critical' as const,
       text: `${tabSwitches} browser tab switch events recorded during session. Maintain focus during live evaluations.`,
@@ -221,16 +261,7 @@ export async function gradeInterview(
     });
   }
 
-  return {
-    id: `scorecard-${Date.now()}`,
-    interviewId,
-    overallScore,
-    rubricScores,
-    strongAreas,
-    weakAreas,
-    citedFeedback,
-    createdAt: new Date().toISOString(),
-  };
+  return scorecard;
 }
 
 export async function analyzeResumeContent(
@@ -271,15 +302,15 @@ Return a detailed JSON response (do not include markdown wrapping) with exactly 
     }
   }
 
-  // Fallback mock response
+  // Fallback mock response if parsing fails
   return {
-    summary: `Resume demonstrates strong full-stack and distributed systems experience with modern architectural practices.`,
-    detectedSkills: ["TypeScript", "Next.js", "Node.js", "Docker", "REST APIs"],
+    summary: `Failed to analyze resume content. Please ensure the resume is text-readable and try again.`,
+    detectedSkills: [],
     sections: [
       {
-        name: 'Experience & Impact',
-        score: 85,
-        feedback: 'Strong action verbs. Highlight user volume and throughput metrics where possible.',
+        name: 'Analysis Failed',
+        score: 0,
+        feedback: 'We could not generate a valid evaluation from the provided resume text.',
       }
     ],
     bulletSuggestions: []
@@ -303,74 +334,75 @@ export async function analyzeRepoWithLLM(
   };
   suggestions: RepoSuggestion[];
 }> {
-  const docs = signals.hasReadme ? 88 : 45;
-  const testing = signals.hasTests ? 85 : 30;
-  const gitHygiene = signals.hasGitignore && signals.hasCi ? 90 : 55;
-  const structure = signals.hasLinter ? 86 : 68;
-  const codeQuality = 82;
-  const security = 88;
-  const dependencyHealth = signals.hasLockfile ? 92 : 65;
+  const prompt = `You are an expert Senior Staff Software Engineer reviewing a GitHub repository named "${repoName}".
+Here are some static signals detected:
+- Has README: ${signals.hasReadme}
+- Has Tests: ${signals.hasTests}
+- Has CI: ${signals.hasCi}
+- Has Linter: ${signals.hasLinter}
+- Has Lockfile: ${signals.hasLockfile}
 
-  const overallScore = Math.round(
-    (codeQuality * 0.25) +
-    (structure * 0.15) +
-    (testing * 0.20) +
-    (docs * 0.15) +
-    (security * 0.10) +
-    (gitHygiene * 0.10) +
-    (dependencyHealth * 0.05)
-  );
+Here are snippets from key files:
+${files.map(f => `--- ${f.path} ---\n${f.content.slice(0, 500)}`).join('\n\n')}
 
-  const suggestions: RepoSuggestion[] = [];
+Analyze the repository and provide a genuine score. DO NOT give fake positive scores. If the code is poor or missing, give low scores.
+Return a JSON object (no markdown wrapping) exactly matching this structure:
+{
+  "overallScore": 0, // 0-100
+  "categoryScores": {
+    "codeQuality": 0,
+    "structure": 0,
+    "testing": 0,
+    "docs": 0,
+    "security": 0,
+    "dependencyHealth": 0,
+    "gitHygiene": 0
+  },
+  "suggestions": [
+    {
+      "id": "sug-1",
+      "category": "Testing",
+      "severity": "high",
+      "filePath": "src/index.js",
+      "description": "Explanation of issue",
+      "suggestedFix": "How to fix it"
+    }
+  ]
+}`;
 
-  if (!signals.hasTests) {
-    suggestions.push({
-      id: `sug-${Date.now()}-1`,
-      category: 'Testing',
-      severity: 'high',
-      filePath: 'tests/unit/core.test.ts',
-      description: 'Zero automated unit test suites found in repository. Candidates are expected to exhibit test-driven practices.',
-      suggestedFix: 'Introduce a test framework like Vitest or Jest. Add integration tests for critical routing and data transformation logic.',
-    });
+  const response = await callLLM(prompt, "Please analyze the repo and return the JSON object.");
+  
+  if (response) {
+    try {
+      const parsed = JSON.parse(response.replace(/```json/g, '').replace(/```/g, '').trim());
+      if (parsed && typeof parsed.overallScore === 'number') {
+        return parsed;
+      }
+    } catch (e) {
+      console.warn("Failed to parse repo analysis JSON:", response);
+    }
   }
 
-  if (!signals.hasCi) {
-    suggestions.push({
-      id: `sug-${Date.now()}-2`,
-      category: 'Git Hygiene',
-      severity: 'med',
-      filePath: '.github/workflows/ci.yml',
-      description: 'Lack of automated CI workflow permits regressions and lint errors to reach main branch.',
-      suggestedFix: 'Configure GitHub Actions workflow to run typechecking, linting, and tests on all pull requests.',
-      codeSnippet: `name: CI\non: [push, pull_request]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n      - run: npm ci\n      - run: npm run lint\n      - run: npm test`,
-    });
-  }
-
-  const sampleSource = files.find((f) => /\.(ts|js|py)$/i.test(f.path));
-  if (sampleSource) {
-    suggestions.push({
-      id: `sug-${Date.now()}-3`,
-      category: 'Code Quality',
-      severity: 'med',
-      filePath: sampleSource.path,
-      lineRange: '12-28',
-      description: 'Potential unhandled promise rejection and missing typed error boundaries in async operations.',
-      suggestedFix: 'Wrap async I/O in structured try-catch blocks with customized application domain error types.',
-    });
-  }
-
+  // Fallback if LLM fails
   return {
-    overallScore,
+    overallScore: 0,
     categoryScores: {
-      codeQuality,
-      structure,
-      testing,
-      docs,
-      security,
-      dependencyHealth,
-      gitHygiene,
+      codeQuality: 0,
+      structure: 0,
+      testing: 0,
+      docs: 0,
+      security: 0,
+      dependencyHealth: 0,
+      gitHygiene: 0,
     },
-    suggestions,
+    suggestions: [{
+      id: `sug-${Date.now()}`,
+      category: 'System',
+      severity: 'high',
+      filePath: '',
+      description: 'The LLM failed to analyze this repository.',
+      suggestedFix: 'Try analyzing a smaller repository or check API keys.',
+    }],
   };
 }
 
