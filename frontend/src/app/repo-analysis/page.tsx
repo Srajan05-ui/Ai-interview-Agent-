@@ -322,7 +322,7 @@ export default function RepoAnalysisPage() {
                         value={githubUsernameInput}
                         onChange={(e) => setGithubUsernameInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && fetchUserRepos(githubUsernameInput)}
-                        placeholder="e.g. Srajan05-ui"
+                        placeholder="GitHub username"
                         className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500"
                       />
                       <button
